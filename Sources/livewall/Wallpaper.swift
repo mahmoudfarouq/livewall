@@ -20,11 +20,17 @@ final class Wallpaper: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     private var signalSources: [DispatchSourceSignal] = []
     private var locked = false, asleep = false
     private var paused: Bool { locked || asleep }
+    private let keyFlag: CGEventFlags
+    private var heldSince: Date?
+    private var interacting = false
+    private var previousApp: NSRunningApplication?
 
     init(_ opts: Options) {
         guard let url = URL(string: opts.url) else { fail("bad url \(opts.url)") }
+        guard let flag = Self.modifierFlags[opts.key] else { fail("unknown key \(opts.key)") }
         self.opts = opts
         self.url = url
+        self.keyFlag = flag
     }
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -50,6 +56,8 @@ final class Wallpaper: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         dnc.addObserver(forName: .init("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in
             self?.locked = false; self?.applyPause()
         }
+
+        Timer.scheduledTimer(withTimeInterval: 0.04, repeats: true) { [weak self] _ in self?.pollKey() }
 
         onSignal(SIGTERM) { [weak self] in self?.shutdown() }
         onSignal(SIGINT) { [weak self] in self?.shutdown() }
@@ -93,6 +101,7 @@ final class Wallpaper: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.hasShadow = false
+        panel.acceptsMouseMovedEvents = true
         panel.isOpaque = true
         panel.backgroundColor = .black // shows if the page is transparent or fails to load
 
@@ -109,6 +118,12 @@ final class Wallpaper: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         web.underPageBackgroundColor = .black
         web.navigationDelegate = self
         panel.contentView = web
+        NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: panel, queue: .main) { [weak panel, weak web] _ in
+            // WebKit already throttles occluded windows; also tell the page, in case it wants to stop work.
+            guard let panel, let web else { return }
+            let visible = panel.occlusionState.contains(.visible)
+            web.evaluateJavaScript("document.dispatchEvent(new CustomEvent('livewall:visibility', {detail: {visible: \(visible)}}))")
+        }
         load(web)
         if !paused { panel.orderFrontRegardless() }
         return (panel, web)
@@ -124,12 +139,65 @@ final class Wallpaper: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     static let desktopLevel = NSWindow.Level(Int(CGWindowLevelForKey(.desktopWindow)))
 
+    // MARK: hold-to-interact
+
+    static let modifierFlags: [String: CGEventFlags] = [
+        "option": .maskAlternate, "control": .maskControl, "command": .maskCommand, "fn": .maskSecondaryFn,
+    ]
+
+    /// Polls the global modifier state. Reading flags needs no Accessibility or Input
+    /// Monitoring permission, unlike an event tap or a global key monitor.
+    private func pollKey() {
+        let mods: CGEventFlags = [.maskAlternate, .maskControl, .maskCommand, .maskSecondaryFn, .maskShift]
+        let held = CGEventSource.flagsState(.combinedSessionState).intersection(mods) == keyFlag
+        guard held, !paused else {
+            heldSince = nil
+            if interacting { setInteractive(false) }
+            return
+        }
+        // Require a short hold so quick shortcuts (e.g. Option+arrow) don't flicker the desktop icons.
+        let since = heldSince ?? Date()
+        heldSince = since
+        if !interacting, Date().timeIntervalSince(since) > 0.12 { setInteractive(true) }
+    }
+
+    private func setInteractive(_ on: Bool) {
+        interacting = on
+        let level = on ? NSWindow.Level(Int(CGWindowLevelForKey(.desktopIconWindow)) + 1) : Self.desktopLevel
+        for w in windows.values {
+            w.panel.level = level
+            w.panel.ignoresMouseEvents = !on
+        }
+        if on {
+            let front = NSWorkspace.shared.frontmostApplication
+            previousApp = front?.processIdentifier == getpid() ? nil : front
+            // Make the panel under the pointer key without activating the app (it is a
+            // non-activating panel), so hover and keyboard reach the page as well as clicks.
+            let p = NSEvent.mouseLocation
+            if let w = windows.values.first(where: { NSMouseInRect(p, $0.panel.frame, false) }) {
+                w.panel.makeKeyAndOrderFront(nil)
+                w.panel.makeFirstResponder(w.web)
+            }
+        } else {
+            // Hand keyboard focus back: re-ordering a key non-activating panel returns key
+            // status to the active app; re-activating it covers the case where it doesn't.
+            for w in windows.values where w.panel.isKeyWindow {
+                w.panel.orderOut(nil)
+                w.panel.orderFrontRegardless()
+            }
+            previousApp?.activate(options: [])
+            previousApp = nil
+        }
+        log(on ? "interactive" : "passive")
+    }
+
     // MARK: energy
 
     /// Ordering the windows out while the screen is locked or asleep makes WebKit treat the
     /// page as hidden, which stops requestAnimationFrame and throttles timers.
     private func applyPause() {
         log(paused ? "pausing (locked or asleep)" : "resuming")
+        if paused, interacting { setInteractive(false) }
         for w in windows.values {
             if paused { w.panel.orderOut(nil) } else { w.panel.orderFrontRegardless() }
         }
