@@ -1,0 +1,2211 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Floating Ink</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #eceeea;
+    --ink: #1c1d20;
+    --ink-soft: #545c5f;
+    --line: rgba(28, 29, 32, 0.13);
+    --panel: rgba(239, 241, 237, 0.76);
+    --focus: #0d3b66;
+    --table: #3a4246;
+    --tray-h: 120px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Zen Kaku Gothic New", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.45;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 1.3s ease;
+  }
+  #water, #life {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    display: block;
+    transform-origin: 50% 46%;
+    transition: transform 1.3s cubic-bezier(.2,.7,.2,1), box-shadow 1.3s ease, opacity 0.8s ease;
+  }
+  #water { touch-action: none; cursor: crosshair; }
+  #life { pointer-events: none; }
+  body.lifted { background: var(--table); }
+  body.lifted #water {
+    transform: scale(0.84) rotate(-0.7deg);
+    box-shadow: 0 2px 3px rgba(0,0,0,0.18), 0 40px 70px -30px rgba(0,0,0,0.6);
+    cursor: default;
+  }
+  body.lifted #life { opacity: 0; transform: scale(0.84) rotate(-0.7deg); }
+
+  .intro {
+    position: fixed;
+    top: max(18px, env(safe-area-inset-top));
+    left: max(16px, env(safe-area-inset-left));
+    max-width: min(36ch, calc(100vw - 32px));
+    pointer-events: none;
+    transition: opacity 1.2s ease;
+  }
+  .intro h1 {
+    font-family: "Shippori Mincho", serif;
+    font-weight: 500;
+    font-size: 25px;
+    letter-spacing: 0.01em;
+    margin: 0 0 4px;
+  }
+  .intro .ja { font-size: 14px; color: var(--ink-soft); margin-left: 10px; opacity: 0.7; }
+  .intro p { margin: 0; font-size: 14px; color: var(--ink-soft); }
+  #hint { color: var(--ink); opacity: 0.82; }
+  #lore {
+    margin-top: 8px;
+    font-family: "Shippori Mincho", serif;
+    font-size: 13.5px;
+    transition: opacity 0.7s ease;
+  }
+  #lore.fade { opacity: 0; }
+  body.lifted .intro { opacity: 0; }
+
+  .tray {
+    position: fixed;
+    left: 12px; right: 12px;
+    margin: 0 auto;
+    bottom: max(14px, env(safe-area-inset-bottom));
+    width: -moz-fit-content;
+    width: fit-content;
+    max-width: calc(100% - 24px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--panel);
+    -webkit-backdrop-filter: blur(14px) saturate(1.1);
+    backdrop-filter: blur(14px) saturate(1.1);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    box-shadow: 0 10px 30px -18px rgba(20, 30, 40, 0.45);
+  }
+  .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 14px; }
+  .sep { width: 1px; height: 26px; background: var(--line); }
+  .tools { display: flex; gap: 4px; }
+  .tool {
+    display: inline-flex; align-items: center; gap: 6px;
+    font: inherit; font-size: 13.5px; color: var(--ink);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    padding: 5px 9px 5px 7px;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+  .tool svg { width: 20px; height: 20px; flex: none; }
+  .tool:hover { border-color: var(--line); }
+  .tool[aria-checked="true"] { background: var(--ink); color: var(--paper); }
+  .pigments { display: flex; align-items: center; gap: 8px; }
+  .swatch {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 0; padding: 0;
+    cursor: pointer;
+    background: radial-gradient(circle at 34% 30%, rgba(255,255,255,0.32), rgba(255,255,255,0) 46%), var(--c);
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.12);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .swatch:hover { transform: scale(1.08); }
+  .swatch[aria-checked="true"] { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12), 0 0 0 3px #f1f2ee, 0 0 0 4.5px var(--ink); }
+  .pigment-name { min-width: 7.5em; font-size: 13.5px; }
+  .actions button, .actions select {
+    font: inherit; font-size: 13.5px; color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 6px 13px;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  }
+  .actions select {
+    -webkit-appearance: none; appearance: none;
+    padding-right: 28px;
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position: calc(100% - 15px) 55%, calc(100% - 11px) 55%;
+    background-size: 4px 4px, 4px 4px;
+    background-repeat: no-repeat;
+  }
+  .actions button:hover, .actions select:hover { border-color: rgba(28,29,32,0.32); }
+  .actions button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  button:focus-visible, select:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+  .swatch:focus-visible { outline-offset: 5px; }
+
+  .float-msg {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    margin: 0;
+    padding: 8px 14px;
+    font-size: 14px;
+    color: var(--ink);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+    pointer-events: none;
+  }
+  #status { bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--tray-h) + 58px); }
+  #step { bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--tray-h) + 12px); max-width: min(46ch, calc(100vw - 32px)); }
+  #step.show { opacity: 1; }
+  #step b { font-weight: 500; }
+  #status.show { opacity: 1; }
+  #caption {
+    position: fixed;
+    bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--tray-h) + 16px);
+    left: 16px; right: 16px;
+    margin: 0;
+    text-align: center;
+    font-family: "Shippori Mincho", serif;
+    font-size: 15px;
+    color: #e6e8e3;
+    opacity: 0;
+    transition: opacity 1s ease 0.5s;
+    pointer-events: none;
+  }
+  body.lifted #caption { opacity: 0.92; }
+  /* the drying line */
+  #line {
+    position: fixed;
+    top: max(16px, env(safe-area-inset-top));
+    right: max(16px, env(safe-area-inset-right));
+    max-width: calc(100vw - 440px);
+    margin: 0;
+    padding: 9px 6px 0;
+    list-style: none;
+    display: flex;
+    flex-direction: row-reverse;
+    gap: 12px;
+    overflow: hidden;
+  }
+  #line[hidden] { display: none; }
+  #line::before {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; top: 7px;
+    height: 1px;
+    background: rgba(28,29,32,0.35);
+    border-radius: 1px;
+  }
+  body.lifted #line::before { background: rgba(230,232,227,0.5); }
+  #line li { flex: none; animation: pin 0.9s cubic-bezier(.3,1.4,.5,1) both; }
+  #line li:nth-child(2n) .print { transform: rotate(1.6deg); }
+  #line li:nth-child(2n+1) .print { transform: rotate(-1.2deg); }
+  @keyframes pin { from { opacity: 0; transform: translateY(-18px) rotate(-6deg); } to { opacity: 1; transform: none; } }
+  .print {
+    position: relative;
+    display: block;
+    padding: 3px;
+    border: 0;
+    background: #f4f4f0;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.18), 0 8px 14px -8px rgba(0,0,0,0.35);
+    cursor: zoom-in;
+    transform-origin: 50% 0;
+  }
+  .print::before {
+    content: "";
+    position: absolute;
+    left: 50%; top: -8px;
+    width: 6px; height: 14px;
+    margin-left: -3px;
+    background: #a98d63;
+    border-radius: 2px;
+    box-shadow: inset -1px 0 0 rgba(0,0,0,0.18);
+  }
+  .print canvas { display: block; width: 76px; height: auto; }
+  .print:hover { box-shadow: 0 1px 2px rgba(0,0,0,0.2), 0 12px 18px -8px rgba(0,0,0,0.4); }
+  #viewer {
+    border: 0;
+    padding: 18px 18px 14px;
+    background: #f4f4f0;
+    color: var(--ink);
+    max-width: min(92vw, 1100px);
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,0.6);
+  }
+  #viewer::backdrop { background: rgba(32,38,42,0.62); }
+  #viewer canvas { display: block; max-width: 100%; max-height: 74vh; width: auto; height: auto; margin: 0 auto; }
+  #viewer .row { justify-content: space-between; margin-top: 12px; gap: 12px; flex-wrap: nowrap; }
+  #viewer p { margin: 0; font-family: "Shippori Mincho", serif; font-size: 15px; }
+  #viewer button {
+    font: inherit; font-size: 13.5px; color: var(--ink);
+    background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer;
+  }
+  @media (max-width: 760px) {
+    #line { max-width: calc(100vw - 32px); left: 16px; right: 16px; flex-direction: row; justify-content: flex-start; }
+    .print canvas { width: 54px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #line li { animation: none; } }
+  #nogl { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--ink-soft); }
+  #nogl[hidden] { display: none; }
+  .short { display: none; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  @media (max-width: 760px) {
+    .tool .label { display: none; }
+    .tool { padding: 6px; }
+    .sep { display: none; }
+    .pigment-name { display: none; }
+  }
+  @media (max-width: 560px) {
+    .tray { padding: 8px; gap: 6px; border-radius: 16px; }
+    .row { gap: 6px 8px; }
+    .actions button, .actions select { padding: 6px 10px; font-size: 13px; }
+    .actions select { padding-right: 26px; }
+    .intro h1 { font-size: 21px; }
+    .intro p { font-size: 13px; }
+    #lore { font-size: 12.5px; }
+    .long { display: none; }
+    .short { display: inline; }
+    .tools { gap: 2px; }
+    .tool { padding: 5px; }
+    .swatch { width: 26px; height: 26px; }
+    .pigments { gap: 6px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #water, #life, body, .intro, #caption, #lore { transition-duration: 0.01s; transition-delay: 0s; }
+    body.lifted #water, body.lifted #life { transform: scale(0.84); }
+  }
+</style>
+
+<canvas id="water" role="img" aria-label="A marbling tank of water. Touch it to drop colour."></canvas>
+<canvas id="life" aria-hidden="true"></canvas>
+
+<div class="intro" id="intro">
+  <h1>Floating Ink<span class="ja" lang="ja">墨流し</span></h1>
+  <p id="hint"></p>
+  <p id="lore"></p>
+</div>
+
+<p id="status" class="float-msg" role="status" aria-live="polite"></p>
+<p id="caption" aria-live="polite"></p>
+<p id="step" class="float-msg" aria-live="polite"></p>
+<ul id="line" aria-label="Drying line of lifted prints" hidden></ul>
+<dialog id="viewer" aria-label="Print">
+  <canvas id="viewCanvas" role="img"></canvas>
+  <div class="row"><p id="viewCaption"></p><button type="button" id="viewClose">Close</button></div>
+</dialog>
+
+<div class="tray" id="tray" role="group" aria-label="Marbler's tray">
+  <div class="row">
+    <div class="tools" role="radiogroup" aria-label="Tool" id="tools"></div>
+    <span class="sep" aria-hidden="true"></span>
+    <div class="pigments" role="radiogroup" aria-label="Pigment" id="pigments"></div>
+    <span class="pigment-name" id="pigmentName" aria-hidden="true"></span>
+  </div>
+  <div class="row actions" id="actions">
+    <select id="pattern" aria-label="Try a pattern">
+      <option value="">Try a pattern</option>
+      <option value="suminagashi">Suminagashi rings</option>
+      <option value="stone">Stone (battal)</option>
+      <option value="gelgit">Gel-git</option>
+      <option value="nonpareil">Nonpareil</option>
+      <option value="tulip">Tulip</option>
+    </select>
+    <select id="mood" aria-label="Water mood">
+      <option value="still">Still water</option>
+      <option value="spring">Spring</option>
+      <option value="autumn">Autumn</option>
+      <option value="winter">Winter</option>
+      <option value="night">Night rain</option>
+    </select>
+    <button type="button" id="lifeBtn" aria-pressed="true" title="Koi, falling leaves and weather">Life<span class="long"> in the water</span></button>
+    <button type="button" id="cam" aria-pressed="false"><span class="long">Use camera</span><span class="short">Camera</span></button>
+    <button type="button" id="ghost" aria-pressed="false" hidden>Silhouette</button>
+    <button type="button" id="sound" aria-pressed="false">Sound</button>
+    <button type="button" id="lift">Lift<span class="long"> the print</span></button>
+    <button type="button" id="clear">Clear</button>
+  </div>
+</div>
+
+<div id="nogl" hidden><p>This browser can't run the water here: WebGL isn't available.<br>Try a recent Chrome, Safari or Firefox.</p></div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- pigments (real ones) ----------
+  // Subtractive model: the dye texture stores absorbance; the paper shows through as paper * exp(-absorbance).
+  const LIB = {
+    sumi: { name: 'Sumi ink', hex: '#1b1a1e', gain: 0.85 },
+    indigo: { name: 'Indigo', hex: '#26365c' },
+    prussian: { name: 'Prussian blue', hex: '#0c3c68' },
+    vermilion: { name: 'Vermilion', hex: '#d2431f', gain: 1.15 },
+    gamboge: { name: 'Gamboge', hex: '#e39a12', gain: 1.3 },
+    madder: { name: 'Rose madder', hex: '#c4485f', gain: 1.15 },
+    sapgreen: { name: 'Sap green', hex: '#4f7a28', gain: 1.1 },
+    sienna: { name: 'Burnt sienna', hex: '#8a3b1d' },
+    paynes: { name: "Payne's grey", hex: '#3c4752' },
+  };
+  for (const [id, p] of Object.entries(LIB)) {
+    p.id = id;
+    p.abs = [1, 3, 5].map(i => {
+      const v = parseInt(p.hex.substr(i, 2), 16) / 255;
+      return -Math.log(Math.max(Math.pow(v, 2.2), 0.006)) * (p.gain || 1);
+    });
+  }
+  let palette = ['sumi', 'indigo', 'prussian', 'vermilion', 'gamboge'].map(k => LIB[k]);
+  let pigment = LIB.prussian;
+
+  const TOOLS = [
+    { id: 'drop', name: 'Drop', hint: 'Touch the water to let a drop of colour spread. Hold for a larger drop.',
+      icon: '<path d="M12 3.5c3.2 4.2 5.2 7 5.2 9.7a5.2 5.2 0 0 1-10.4 0c0-2.7 2-5.5 5.2-9.7z"/>' },
+    { id: 'brush', name: 'Brush', hint: 'Drag to draw colour straight through the water.',
+      icon: '<path d="M4 20.5c2.6 0 4.3-1.3 4.3-3.4 0-1.2.9-2.2 2.1-2.2"/><path d="M9.9 14.6 18.4 6a1.7 1.7 0 0 1 2.4 2.4l-8.5 8.6"/>' },
+    { id: 'stylus', name: 'Stylus', hint: 'Drag a fine point through the colours to pull thin lines. It adds no ink.',
+      icon: '<path d="M7 17 19 5"/><circle cx="5.6" cy="18.4" r="1.4"/>' },
+    { id: 'comb', name: 'Comb', hint: 'Drag a row of pins across the whole tank. Go back and forth for gel-git.',
+      icon: '<path d="M3.5 6.5h17"/><path d="M5.5 6.5v11M9.2 6.5v11M12.9 6.5v11M16.6 6.5v11M20.3 6.5v11" stroke-dasharray="0"/>' },
+    { id: 'breath', name: 'Breath', hint: 'Hold to breathe across the surface; the colours drift away from you.',
+      icon: '<path d="M3 8.5c3-2 5.5 2 8.5 0s5.5-2 8.5 0"/><path d="M3 13c3-2 5.5 2 8.5 0s5.5-2 8.5 0"/><path d="M3 17.5c2.2-1.4 4.2 1.4 6.4 0"/>' },
+    { id: 'clear', name: 'Clear drop', hint: 'Touch to drop clear water with a little gall. It opens a hole and pushes colour into rings.',
+      icon: '<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.6"/>' },
+  ];
+  let tool = TOOLS[0];
+
+  const LORE = {
+    start: "Suminagashi, 'floating ink', is the oldest known marbling, practised in Japan since the 12th century.",
+    drop: 'A marbler touches a loaded brush to the surface and the colour opens into a disc.',
+    brush: 'Ink drawn straight through the water feathers and curls as it goes.',
+    stylus: 'Turkish marblers pull lines with a single bodkin of brass or a stiff horsehair.',
+    comb: 'Marbling combs were rows of fine pins set into a wooden bar, the width of the tank.',
+    breath: 'In suminagashi the marbler may simply breathe across the water to set the rings drifting.',
+    clear: 'Ox gall makes colour spread; a drop of it alone pushes everything else aside.',
+    idle: 'Left alone the water keeps drifting; marblers wait for it to settle before laying the paper.',
+    lift: 'A sheet laid on the surface takes the pattern in one touch, so every print is the only one.',
+    camera: 'Your movement becomes the current; the camera only sees a coarse grid of change.',
+  };
+
+  const reduceMQ = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let reduced = reduceMQ.matches;
+  if (reduceMQ.addEventListener) reduceMQ.addEventListener('change', e => { reduced = e.matches; });
+
+  const isSmall = Math.min(window.innerWidth, window.innerHeight) < 600;
+  const CFG = {
+    SIM_RES: isSmall ? 128 : 160,
+    DYE_RES: isSmall ? 720 : 1024,
+    PRESSURE_ITER: 24,
+    PRESSURE: 0.8,
+    VEL_DISSIPATION: 0.35,
+    DYE_DISSIPATION: 0.05,
+    CURL: 24,
+    FORCE: 5200,
+    RADIUS: 0.0011,
+  };
+
+  // ---------- UI ----------
+  const $ = id => document.getElementById(id);
+  const canvas = $('water');
+  const lifeCv = $('life');
+  const lctx = lifeCv.getContext('2d');
+  const statusEl = $('status');
+  let statusTimer = 0;
+  function say(msg, ms = 6000) {
+    statusEl.textContent = msg;
+    statusEl.classList.add('show');
+    clearTimeout(statusTimer);
+    if (ms) statusTimer = setTimeout(() => statusEl.classList.remove('show'), ms);
+  }
+  const loreEl = $('lore');
+  let loreKey = '', loreTimer = 0;
+  function setLore(text) {
+    if (!text || text === loreKey) return;
+    loreKey = text;
+    loreEl.classList.add('fade');
+    clearTimeout(loreTimer);
+    loreTimer = setTimeout(() => { loreEl.textContent = text; loreEl.classList.remove('fade'); placeLine(); }, reduced ? 0 : 450);
+  }
+  const hintEl = $('hint');
+
+  function radioKeys(wrap, items, i, pick) {
+    return e => {
+      const k = e.key;
+      if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(k)) return;
+      e.preventDefault();
+      const dir = (k === 'ArrowRight' || k === 'ArrowDown') ? 1 : -1;
+      const n = items[(i + dir + items.length) % items.length];
+      pick(n.id, true);
+      wrap.querySelector(`[data-id="${n.id}"]`).focus();
+    };
+  }
+
+  const toolWrap = $('tools');
+  TOOLS.forEach((t, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'tool';
+    b.setAttribute('role', 'radio');
+    b.dataset.id = t.id;
+    b.title = t.hint;
+    b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${t.icon}</svg><span class="label">${t.name}</span>`;
+    b.setAttribute('aria-label', t.name);
+    b.addEventListener('click', () => chooseTool(t.id, true));
+    b.addEventListener('keydown', radioKeys(toolWrap, TOOLS, i, chooseTool));
+    toolWrap.appendChild(b);
+  });
+  function chooseTool(id, fromUser) {
+    tool = TOOLS.find(t => t.id === id);
+    toolWrap.querySelectorAll('.tool').forEach(b => {
+      const on = b.dataset.id === id;
+      b.setAttribute('aria-checked', String(on));
+      b.tabIndex = on ? 0 : -1;
+    });
+    hintEl.textContent = tool.hint;
+    if (fromUser) { setLore(LORE[id]); markInput(); }
+  }
+
+  const pigWrap = $('pigments');
+  const pigName = $('pigmentName');
+  function buildPalette() {
+    pigWrap.textContent = '';
+    palette.forEach((p, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'swatch';
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-label', p.name);
+      b.title = p.name;
+      b.style.setProperty('--c', p.hex);
+      b.dataset.id = p.id;
+      b.addEventListener('click', () => choosePigment(p.id, true));
+      b.addEventListener('keydown', radioKeys(pigWrap, palette, i, choosePigment));
+      pigWrap.appendChild(b);
+    });
+    if (!palette.includes(pigment)) pigment = palette[Math.min(2, palette.length - 1)];
+    choosePigment(pigment.id, false);
+  }
+  function choosePigment(id, fromUser) {
+    pigment = LIB[id];
+    pigWrap.querySelectorAll('.swatch').forEach(b => {
+      const on = b.dataset.id === id;
+      b.setAttribute('aria-checked', String(on));
+      b.tabIndex = on ? 0 : -1;
+    });
+    pigName.textContent = pigment.name;
+    if (fromUser && tool.id !== 'drop' && tool.id !== 'brush') chooseTool('drop', true);
+    if (fromUser) markInput();
+  }
+
+  // ---------- WebGL setup ----------
+  const glParams = { alpha: false, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' };
+  let gl = canvas.getContext('webgl2', glParams);
+  const isGL2 = !!gl;
+  if (!gl) gl = canvas.getContext('webgl', glParams) || canvas.getContext('experimental-webgl', glParams);
+  if (!gl) return fail();
+
+  function canRender(internal, format, type) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    let ok = false;
+    try {
+      gl.texImage2D(gl.TEXTURE_2D, 0, internal, 4, 4, 0, format, type, null);
+      const fbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.deleteFramebuffer(fbo);
+    } catch (e) { ok = false; }
+    gl.deleteTexture(tex);
+    while (gl.getError() !== gl.NO_ERROR) { /* drain */ }
+    return ok;
+  }
+
+  function pickFormats() {
+    const cands = [];
+    if (isGL2) {
+      gl.getExtension('EXT_color_buffer_float');
+      gl.getExtension('EXT_color_buffer_half_float');
+      const floatLinear = !!gl.getExtension('OES_texture_float_linear');
+      cands.push({ type: gl.HALF_FLOAT, linear: true, r: gl.R16F, rg: gl.RG16F, rgba: gl.RGBA16F });
+      cands.push({ type: gl.FLOAT, linear: floatLinear, r: gl.R32F, rg: gl.RG32F, rgba: gl.RGBA32F });
+    } else {
+      const hf = gl.getExtension('OES_texture_half_float');
+      const hfLinear = !!gl.getExtension('OES_texture_half_float_linear');
+      gl.getExtension('EXT_color_buffer_half_float');
+      if (hf) cands.push({ type: hf.HALF_FLOAT_OES, linear: hfLinear, r: gl.RGBA, rg: gl.RGBA, rgba: gl.RGBA });
+      if (gl.getExtension('OES_texture_float')) {
+        gl.getExtension('WEBGL_color_buffer_float');
+        cands.push({ type: gl.FLOAT, linear: !!gl.getExtension('OES_texture_float_linear'), r: gl.RGBA, rg: gl.RGBA, rgba: gl.RGBA });
+      }
+    }
+    for (const c of cands) {
+      if (!canRender(c.rgba, gl.RGBA, c.type)) continue;
+      const rgba = { internal: c.rgba, format: gl.RGBA };
+      let rg = rgba, r = rgba;
+      if (isGL2) {
+        if (canRender(c.rg, gl.RG, c.type)) rg = { internal: c.rg, format: gl.RG };
+        if (canRender(c.r, gl.RED, c.type)) r = { internal: c.r, format: gl.RED };
+        else r = rg;
+      }
+      return { type: c.type, linear: c.linear, rgba, rg, r };
+    }
+    return null;
+  }
+  const FMT = pickFormats();
+  if (!FMT) return fail();
+
+  function fail() {
+    canvas.style.display = 'none';
+    $('nogl').hidden = false;
+    $('tray').style.display = 'none';
+    hintEl.textContent = '';
+  }
+
+  // ---------- shaders ----------
+  const PREC = `#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+precision highp sampler2D;
+#else
+precision mediump float;
+precision mediump sampler2D;
+#endif
+`;
+  const VERT = `precision highp float;
+attribute vec2 aPosition;
+varying vec2 vUv, vL, vR, vT, vB;
+uniform vec2 texelSize;
+void main () {
+  vUv = aPosition * 0.5 + 0.5;
+  vL = vUv - vec2(texelSize.x, 0.0);
+  vR = vUv + vec2(texelSize.x, 0.0);
+  vT = vUv + vec2(0.0, texelSize.y);
+  vB = vUv - vec2(0.0, texelSize.y);
+  gl_Position = vec4(aPosition, 0.0, 1.0);
+}`;
+  const FRAG = {
+    copy: `varying vec2 vUv; uniform sampler2D uTexture; uniform float value;
+void main () { gl_FragColor = value * texture2D(uTexture, vUv); }`,
+    // gaussian splat; "erase" lifts colour away (a clear drop), "swirl" adds a small vortex
+    splat: `varying vec2 vUv;
+uniform sampler2D uTarget;
+uniform float aspectRatio, radius, swirl, lo, hi, erase;
+uniform vec3 color;
+uniform vec2 point;
+void main () {
+  vec2 p = vUv - point;
+  p.x *= aspectRatio;
+  float g = exp(-dot(p, p) / radius);
+  vec3 s = color * g;
+  s.xy += vec2(-p.y, p.x) * swirl * g;
+  vec3 base = texture2D(uTarget, vUv).xyz * (1.0 - erase * g);
+  gl_FragColor = vec4(clamp(base + s, vec3(lo), vec3(hi)), 1.0);
+}`,
+    // a pin (or a whole comb of pins) dragged along a segment: the water near each pin moves with it
+    line: `varying vec2 vUv;
+uniform sampler2D uTarget;
+uniform vec2 pa, pb, vel;
+uniform float aspectRatio, radius, spacing, grip;
+void main () {
+  vec2 p = vec2(vUv.x * aspectRatio, vUv.y);
+  vec2 A = vec2(pa.x * aspectRatio, pa.y);
+  vec2 B = vec2(pb.x * aspectRatio, pb.y);
+  vec2 ab = B - A;
+  float L = length(ab);
+  vec2 dir = L > 1e-6 ? ab / L : vec2(1.0, 0.0);
+  vec2 nrm = vec2(-dir.y, dir.x);
+  vec2 ap = p - A;
+  float along = dot(ap, dir);
+  float across = dot(ap, nrm);
+  float da = along - clamp(along, 0.0, L);
+  if (spacing > 0.0) across -= spacing * floor(across / spacing + 0.5);
+  float w = exp(-(da * da + across * across) / radius) * grip;
+  vec2 base = texture2D(uTarget, vUv).xy;
+  gl_FragColor = vec4(mix(base, vel, w), 0.0, 1.0);
+}`,
+    advect: `varying vec2 vUv;
+uniform sampler2D uVelocity, uSource;
+uniform vec2 texelSize, srcTexelSize;
+uniform float dt, dissipation, aspectRatio;
+uniform vec4 uSrc[8];
+// surface sources (drops, gall, breath): a smoothed 2D point source, flux q.z, core q.w (short-side units)
+vec2 sourceFlow (vec2 uv) {
+  vec2 v = vec2(0.0);
+  for (int i = 0; i < 8; i++) {
+    vec4 q = uSrc[i];
+    vec2 d = uv - q.xy;
+    d.x *= aspectRatio;
+    float r2 = max(dot(d, d), 1e-7);
+    v += d * (q.z / (6.2832 * r2)) * (1.0 - exp(-r2 / max(q.w, 1e-7)));
+  }
+  v.x /= aspectRatio;
+  return v;
+}
+vec4 bilerp (sampler2D sam, vec2 uv, vec2 ts) {
+  vec2 st = uv / ts - 0.5;
+  vec2 iuv = floor(st);
+  vec2 fuv = fract(st);
+  vec4 a = texture2D(sam, (iuv + vec2(0.5, 0.5)) * ts);
+  vec4 b = texture2D(sam, (iuv + vec2(1.5, 0.5)) * ts);
+  vec4 c = texture2D(sam, (iuv + vec2(0.5, 1.5)) * ts);
+  vec4 d = texture2D(sam, (iuv + vec2(1.5, 1.5)) * ts);
+  return mix(mix(a, b, fuv.x), mix(c, d, fuv.x), fuv.y);
+}
+void main () {
+#ifdef MANUAL_FILTERING
+  vec2 coord = vUv - dt * (bilerp(uVelocity, vUv, texelSize).xy * texelSize + sourceFlow(vUv));
+  vec4 result = bilerp(uSource, coord, srcTexelSize);
+#else
+  vec2 coord = vUv - dt * (texture2D(uVelocity, vUv).xy * texelSize + sourceFlow(vUv));
+  vec4 result = texture2D(uSource, coord);
+#endif
+  gl_FragColor = result / (1.0 + dissipation * dt);
+}`,
+    // divergence, minus surface "sources": where a drop lands the surface really does spread outward
+    divergence: `varying vec2 vUv, vL, vR, vT, vB;
+uniform sampler2D uVelocity;
+void main () {
+  float L = texture2D(uVelocity, vL).x;
+  float R = texture2D(uVelocity, vR).x;
+  float T = texture2D(uVelocity, vT).y;
+  float B = texture2D(uVelocity, vB).y;
+  vec2 C = texture2D(uVelocity, vUv).xy;
+  if (vL.x < 0.0) L = -C.x;
+  if (vR.x > 1.0) R = -C.x;
+  if (vT.y > 1.0) T = -C.y;
+  if (vB.y < 0.0) B = -C.y;
+  gl_FragColor = vec4(0.5 * (R - L + T - B), 0.0, 0.0, 1.0);
+}`,
+    curl: `varying vec2 vUv, vL, vR, vT, vB;
+uniform sampler2D uVelocity;
+void main () {
+  float L = texture2D(uVelocity, vL).y;
+  float R = texture2D(uVelocity, vR).y;
+  float T = texture2D(uVelocity, vT).x;
+  float B = texture2D(uVelocity, vB).x;
+  gl_FragColor = vec4(0.5 * (R - L - T + B), 0.0, 0.0, 1.0);
+}`,
+    vorticity: `varying vec2 vUv, vL, vR, vT, vB;
+uniform sampler2D uVelocity, uCurl;
+uniform float curl, dt;
+void main () {
+  float L = texture2D(uCurl, vL).x;
+  float R = texture2D(uCurl, vR).x;
+  float T = texture2D(uCurl, vT).x;
+  float B = texture2D(uCurl, vB).x;
+  float C = texture2D(uCurl, vUv).x;
+  vec2 force = 0.5 * vec2(abs(T) - abs(B), abs(R) - abs(L));
+  force /= length(force) + 0.0001;
+  force *= curl * C;
+  force.y *= -1.0;
+  vec2 vel = texture2D(uVelocity, vUv).xy + force * dt;
+  gl_FragColor = vec4(clamp(vel, -1000.0, 1000.0), 0.0, 1.0);
+}`,
+    pressure: `varying vec2 vUv, vL, vR, vT, vB;
+uniform sampler2D uPressure, uDivergence;
+void main () {
+  float L = texture2D(uPressure, vL).x;
+  float R = texture2D(uPressure, vR).x;
+  float T = texture2D(uPressure, vT).x;
+  float B = texture2D(uPressure, vB).x;
+  float div = texture2D(uDivergence, vUv).x;
+  gl_FragColor = vec4((L + R + B + T - div) * 0.25, 0.0, 0.0, 1.0);
+}`,
+    gradient: `varying vec2 vUv, vL, vR, vT, vB;
+uniform sampler2D uPressure, uVelocity;
+void main () {
+  float L = texture2D(uPressure, vL).x;
+  float R = texture2D(uPressure, vR).x;
+  float T = texture2D(uPressure, vT).x;
+  float B = texture2D(uPressure, vB).x;
+  vec2 vel = texture2D(uVelocity, vUv).xy - vec2(R - L, T - B);
+  gl_FragColor = vec4(vel, 0.0, 1.0);
+}`,
+    display: `varying vec2 vUv;
+uniform sampler2D uDye, uGhost;
+uniform vec2 dyeTexel, res;
+uniform float time, ghostAmt, lift, dpr, causAmt, lampAmt;
+uniform vec3 paper, sheet, table, lampCol;
+uniform vec2 lampPos;
+float hash (vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+float noise (vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+             mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float fbm (vec2 p) {
+  float s = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) { s += a * noise(p); p = p * 2.03 + 1.7; a *= 0.5; }
+  return s;
+}
+float dens (vec2 uv) { return dot(texture2D(uDye, uv).rgb, vec3(0.3333)); }
+void main () {
+  vec2 uv = vUv;
+  vec2 o = dyeTexel * 1.5;
+  vec2 grad = vec2(dens(uv + vec2(o.x, 0.0)) - dens(uv - vec2(o.x, 0.0)),
+                   dens(uv + vec2(0.0, o.y)) - dens(uv - vec2(0.0, o.y)));
+  float g = length(grad);
+  float wet = 1.0 - lift;
+  vec3 a = max(texture2D(uDye, uv - clamp(grad, -1.0, 1.0) * 0.005 * wet).rgb, 0.0);
+  a *= 1.0 + smoothstep(0.02, 0.5, g) * mix(0.55, 0.8, lift);
+  float aspect = res.x / res.y;
+  vec2 q = vec2(uv.x * aspect, uv.y);
+  float n1 = fbm(q * 3.2 + vec2(time * 0.03, -time * 0.02));
+  float n2 = fbm(q * 4.1 - vec2(time * 0.025, time * 0.035) + 4.1);
+  float caus = pow(clamp(1.0 - abs(n1 - n2) * 3.5, 0.0, 1.0), 6.0) * wet * causAmt;
+  float fiber = fbm(q * vec2(16.0, 70.0));
+  vec2 px = uv * res;
+  float grain = hash(floor(px)) - 0.5;
+  vec3 tint = mix(vec3(0.955, 0.972, 0.99), vec3(1.0), smoothstep(0.0, 1.0, uv.y));
+  vec3 ground = mix(paper * tint, sheet, lift);
+  // lamp light (night): a warm pool that falls off into the dark
+  vec2 lp = vec2((uv.x - lampPos.x) * aspect, uv.y - lampPos.y);
+  float pool = exp(-dot(lp, lp) * 1.6);
+  ground *= mix(vec3(1.0), lampCol * (0.42 + 0.78 * pool), lampAmt);
+  ground *= 1.0 + caus * 0.06 - 0.02 * wet;
+  float fib2 = fbm(q * vec2(90.0, 22.0) + 9.0);
+  ground *= 1.0 - (fiber - 0.5) * mix(0.03, 0.08, lift) - (fib2 - 0.5) * 0.05 * lift + grain * mix(0.012, 0.03, lift);
+  // on paper the pigment sinks into the fibres: lighter, broken
+  a *= mix(1.0, 0.78 + fiber * 0.3 + (fib2 - 0.5) * 0.15, lift);
+  a *= 1.0 - caus * 0.08;
+  vec3 col = ground * exp(-a);
+  float gh = texture2D(uGhost, vec2(uv.x, 1.0 - uv.y)).r;
+  col *= 1.0 - ghostAmt * smoothstep(0.05, 0.9, gh) * vec3(0.16, 0.13, 0.09);
+  vec2 v = uv - 0.5;
+  col *= 1.0 - dot(v, v) * mix(0.22, 0.12, lift);
+  // deckled edge of the lifted sheet
+  vec2 cpx = px / dpr;
+  float edge = min(min(cpx.x, cpx.y), min(res.x / dpr - cpx.x, res.y / dpr - cpx.y));
+  float rag = edge - 3.0 - 7.0 * fbm(cpx * 0.09 + 3.0);
+  col = mix(col, table, lift * (1.0 - smoothstep(0.0, 1.5, rag)));
+  col *= 1.0 - lift * 0.07 * (1.0 - smoothstep(0.0, 26.0, rag));
+  col = pow(max(col, 0.0), vec3(1.0 / 2.2));
+  col += (hash(px + fract(time) * 61.0) - 0.5) / 255.0;
+  gl_FragColor = vec4(col, 1.0);
+}`,
+  };
+
+  function compile(type, src, defines) {
+    const s = gl.createShader(type);
+    const head = (defines || []).map(d => `#define ${d}\n`).join('');
+    gl.shaderSource(s, head + (type === gl.FRAGMENT_SHADER ? PREC : '') + src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  const vs = compile(gl.VERTEX_SHADER, VERT);
+  function program(fragSrc, defines) {
+    const p = gl.createProgram();
+    gl.attachShader(p, vs);
+    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fragSrc, defines));
+    gl.bindAttribLocation(p, 0, 'aPosition');
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+    const u = {};
+    const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < n; i++) {
+      const name = gl.getActiveUniform(p, i).name;
+      u[name.replace(/\[0\]$/, '')] = gl.getUniformLocation(p, name);
+    }
+    return {
+      bind() { gl.useProgram(p); return this; },
+      f(name, ...v) { const l = u[name]; if (l) gl['uniform' + v.length + 'f'](l, ...v); return this; },
+      i(name, v) { const l = u[name]; if (l) gl.uniform1i(l, v); return this; },
+      v4(name, arr) { const l = u[name]; if (l) gl.uniform4fv(l, arr); return this; },
+    };
+  }
+  const manual = FMT.linear ? [] : ['MANUAL_FILTERING'];
+  const P = {};
+  for (const k of Object.keys(FRAG)) P[k] = program(FRAG[k], k === 'advect' ? manual : []);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, -1, 1, 1, 1, 1, -1]), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0, 1, 2, 0, 2, 3]), gl.STATIC_DRAW);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(0);
+
+  function blit(target) {
+    if (target) {
+      gl.viewport(0, 0, target.w, target.h);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
+    } else {
+      gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+  }
+
+  function fbo(w, h, f, filter) {
+    gl.activeTexture(gl.TEXTURE0);
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, f.internal, w, h, 0, f.format, FMT.type, null);
+    const fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    gl.viewport(0, 0, w, h);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    return {
+      tex, fbo: fb, w, h, tx: 1 / w, ty: 1 / h,
+      attach(unit) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); return unit; },
+      free() { gl.deleteTexture(tex); gl.deleteFramebuffer(fb); },
+    };
+  }
+  function doubleFbo(w, h, f, filter) {
+    let a = fbo(w, h, f, filter), b = fbo(w, h, f, filter);
+    return {
+      w, h, tx: 1 / w, ty: 1 / h,
+      get read() { return a; },
+      get write() { return b; },
+      swap() { const t = a; a = b; b = t; },
+    };
+  }
+  function resizeDouble(target, w, h, f, filter) {
+    if (target.w === w && target.h === h) return target;
+    const next = doubleFbo(w, h, f, filter);
+    P.copy.bind().i('uTexture', target.read.attach(0)).f('value', 1);
+    blit(next.read);
+    target.read.free(); target.write.free();
+    return next;
+  }
+  function resFor(res) {
+    let ar = gl.drawingBufferWidth / gl.drawingBufferHeight;
+    if (ar < 1) ar = 1 / ar;
+    const lo = Math.round(res), hi = Math.round(res * ar);
+    return gl.drawingBufferWidth > gl.drawingBufferHeight ? { w: hi, h: lo } : { w: lo, h: hi };
+  }
+
+  let velocity, dye, divergence, curlT, pressure;
+  const LIN = FMT.linear ? gl.LINEAR : gl.NEAREST;
+  function initFbos() {
+    const s = resFor(CFG.SIM_RES), d = resFor(CFG.DYE_RES);
+    gl.disable(gl.BLEND);
+    dye = dye ? resizeDouble(dye, d.w, d.h, FMT.rgba, LIN) : doubleFbo(d.w, d.h, FMT.rgba, LIN);
+    velocity = velocity ? resizeDouble(velocity, s.w, s.h, FMT.rg, LIN) : doubleFbo(s.w, s.h, FMT.rg, LIN);
+    if (divergence) { divergence.free(); curlT.free(); pressure.read.free(); pressure.write.free(); }
+    divergence = fbo(s.w, s.h, FMT.r, gl.NEAREST);
+    curlT = fbo(s.w, s.h, FMT.r, gl.NEAREST);
+    pressure = doubleFbo(s.w, s.h, FMT.r, gl.NEAREST);
+  }
+
+  let cssW = 1, cssH = 1, dprNow = 1;
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const pw = Math.max(1, Math.floor(w * dpr)), ph = Math.max(1, Math.floor(h * dpr));
+    if (canvas.width !== pw || canvas.height !== ph || !velocity) {
+      canvas.width = pw; canvas.height = ph;
+      lifeCv.width = pw; lifeCv.height = ph;
+      cssW = w; cssH = h; dprNow = dpr;
+      initFbos();
+      document.documentElement.style.setProperty('--tray-h', $('tray').offsetHeight + 'px');
+      placeLine();
+    }
+  }
+  const aspect = () => canvas.width / canvas.height;
+  // lengths are given in units of the tank's short side; this rescales them for the shaders' y-units
+  const unitK = () => Math.min(1, aspect());
+
+  // ---------- splatting ----------
+  function splatRaw(target, x, y, c, radius, swirl, lo, hi, erase) {
+    const k = unitK();
+    P.splat.bind()
+      .i('uTarget', target.read.attach(0))
+      .f('aspectRatio', aspect())
+      .f('point', x, y)
+      .f('color', c[0], c[1], c[2])
+      .f('radius', radius * k * k)
+      .f('swirl', swirl)
+      .f('lo', lo).f('hi', hi)
+      .f('erase', erase)
+      .f('texelSize', target.tx, target.ty);
+    blit(target.write);
+    target.swap();
+  }
+  const splatVel = (x, y, vx, vy, radius = CFG.RADIUS, swirl = 0) =>
+    splatRaw(velocity, x, y, [vx, vy, 0], radius, swirl, -2000, 2000, 0);
+  const splatDye = (x, y, abs, amt, radius = CFG.RADIUS) =>
+    splatRaw(dye, x, y, [abs[0] * amt, abs[1] * amt, abs[2] * amt], radius, 0, 0, 6, 0);
+  const eraseDye = (x, y, radius, amount) => splatRaw(dye, x, y, [0, 0, 0], radius, 0, 0, 6, Math.min(1, amount));
+
+  // pins dragged from a to b (uv) in dt seconds; spacing > 0 makes a full-width comb
+  function pinStroke(ax, ay, bx, by, dt, spacing, width, vOver, grip = 0.92) {
+    if (dt <= 0) return;
+    const k = unitK();
+    let vx = (bx - ax) / dt * velocity.w, vy = (by - ay) / dt * velocity.h;
+    if (vOver) { vx = vOver[0]; vy = vOver[1]; }
+    const m = Math.hypot(vx, vy);
+    if (m > 900) { vx *= 900 / m; vy *= 900 / m; }
+    P.line.bind()
+      .i('uTarget', velocity.read.attach(0))
+      .f('aspectRatio', aspect())
+      .f('pa', ax, ay).f('pb', bx, by)
+      .f('vel', vx, vy)
+      .f('radius', width * width * k * k)
+      .f('spacing', spacing * k)
+      .f('grip', grip)
+      .f('texelSize', velocity.tx, velocity.ty);
+    blit(velocity.write);
+    velocity.swap();
+  }
+  const pinWidth = () => 1.25 / Math.min(velocity.w, velocity.h);
+
+  // ---------- surface sources: drops, clear drops, breath, rain ----------
+  // A drop really does spread across the surface; it is modelled as a point source of outward
+  // surface flow (added to the advection), so earlier colours get pushed into thinning rings.
+  const sources = [];
+  const srcArr = new Float32Array(32);
+  const SRC = {
+    ink: { w: 0.00032, s: 0.075 },
+    clear: { w: 0.00032, s: 0.075 },
+    air: { w: 0.006, s: 0.06 },
+    rain: { w: 0.00005, s: 0.012 },
+  };
+  function addSource(o) {
+    const z = o.size == null ? 1 : o.size;
+    const base = SRC[o.kind];
+    const src = {
+      x: o.x, y: o.y, kind: o.kind, pig: o.pig || null,
+      held: !!o.held, hold: o.hold == null ? 0.35 * z : o.hold,
+      w: base.w * (o.kind === 'air' ? 1 : z), s: base.s * (o.kind === 'air' ? 1 : Math.sqrt(z)) * (o.strength || 1), amp: 1, heldTime: 0,
+    };
+    if (src.kind === 'ink') {
+      splatDye(src.x, src.y, src.pig.abs, 1.1, src.w * 0.55);
+      noteUse(src.pig, 'drop');
+      sound.pluck(0.3 + 0.4 * Math.min(1, z), -1);
+    } else if (src.kind === 'clear') {
+      eraseDye(src.x, src.y, src.w * 0.55, 1);
+      noteUse(null, 'clear');
+      sound.pluck(0.25, 3);
+    }
+    if (sources.length >= 8) {
+      const i = sources.findIndex(q => !q.held);
+      if (i < 0 || src.kind === 'rain') return src;
+      sources.splice(i, 1);
+    }
+    sources.push(src);
+    return src;
+  }
+  function updateSources(dt) {
+    for (let i = sources.length - 1; i >= 0; i--) {
+      const s = sources[i];
+      const live = s.held || s.hold > 0;
+      if (s.held) { s.heldTime += dt; if (s.heldTime > 4) s.held = false; }
+      else if (s.hold > 0) s.hold -= dt;
+      else s.amp *= Math.exp(-dt * 4.5);
+      if (live && s.kind === 'ink') splatDye(s.x, s.y, s.pig.abs, 2.4 * dt, s.w * 0.3);
+      if (live && s.kind === 'clear') eraseDye(s.x, s.y, s.w * 0.35, 10 * dt);
+      if (s.amp < 0.03) sources.splice(i, 1);
+    }
+    const k = unitK();
+    srcArr.fill(0);
+    sources.forEach((s, i) => {
+      srcArr[i * 4] = s.x; srcArr[i * 4 + 1] = s.y;
+      srcArr[i * 4 + 2] = s.s * s.amp * k * k * (reduced ? 0.7 : 1); srcArr[i * 4 + 3] = s.w * k * k;
+    });
+  }
+
+  // what went into the current sheet (used to name prints)
+  let usage = { pigs: new Map(), tools: new Set(), recipe: null };
+  function noteUse(pig, what) {
+    if (pig) usage.pigs.set(pig.id, (usage.pigs.get(pig.id) || 0) + 1);
+    if (what) usage.tools.add(what);
+  }
+
+  // ---------- the marbler's still water ----------
+  // "settle" makes the water heavy like marbling size, so lines stay where the tools leave them.
+  let settle = 0, settleHold = 0;
+  function stillWater(sec = 4) { settleHold = Math.max(settleHold, sec); }
+  function updateSettle(dt) {
+    if (settleHold > 0) { settleHold -= dt; settle += (1 - settle) * Math.min(1, dt * 3); }
+    else settle += (0 - settle) * Math.min(1, dt * 0.15);
+  }
+
+  // ---------- input ----------
+  let lastInput = -1e9;
+  function markInput() { lastInput = performance.now(); }
+  const pointers = new Map();
+  function uvOf(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / r.width, y: 1 - (e.clientY - r.top) / r.height };
+  }
+  canvas.addEventListener('pointerdown', e => {
+    if (lifted) return;
+    if (canvas.setPointerCapture) { try { canvas.setPointerCapture(e.pointerId); } catch (_) {} }
+    const p = uvOf(e);
+    const s = { x: p.x, y: p.y, fx: p.x, fy: p.y, down: true, moved: 0, t: performance.now(), src: null, tool: tool.id, dx0: p.x, dy0: p.y };
+    pointers.set(e.pointerId, s);
+    takeOver();
+    if (s.tool === 'drop') s.src = addSource({ kind: 'ink', x: p.x, y: p.y, pig: pigment, held: true });
+    else if (s.tool === 'clear') s.src = addSource({ kind: 'clear', x: p.x, y: p.y, held: true });
+    else if (s.tool === 'breath') s.src = addSource({ kind: 'air', x: p.x, y: p.y, held: true });
+    if (s.tool !== 'brush') stillWater(5);
+    markInput();
+  });
+  canvas.addEventListener('pointermove', e => {
+    const p = uvOf(e);
+    let s = pointers.get(e.pointerId);
+    if (!s) {
+      if (e.pointerType !== 'mouse' || lifted) return;
+      s = { x: p.x, y: p.y, fx: p.x, fy: p.y, down: false, moved: 0, t: 0, src: null, tool: tool.id };
+      pointers.set(e.pointerId, s);
+      return;
+    }
+    s.moved += Math.hypot((p.x - s.x) * aspect(), p.y - s.y);
+    const ddx = (p.x - s.x) * cssW, ddy = -(p.y - s.y) * cssH, dm = Math.hypot(ddx, ddy);
+    if (dm > 1.5) { s.cdx = ddx / dm; s.cdy = ddy / dm; }
+    s.x = p.x; s.y = p.y;
+    if (!s.down) { s.tool = tool.id; return; }
+    markInput();
+    if (s.src && s.tool === 'breath') { s.src.x = p.x; s.src.y = p.y; }
+    if (s.src && (s.tool === 'drop' || s.tool === 'clear')) {
+      // dragging with a drop tool lays a trail of smaller drops
+      if (Math.hypot((p.x - s.dx0) * aspect(), p.y - s.dy0) > 0.07) {
+        s.src.held = false;
+        s.src = addSource({ kind: s.tool === 'drop' ? 'ink' : 'clear', x: p.x, y: p.y, pig: pigment, held: true, size: 0.6 });
+        s.dx0 = p.x; s.dy0 = p.y;
+      }
+    }
+  });
+  function endPointer(e) {
+    const s = pointers.get(e.pointerId);
+    if (!s) return;
+    if (s.src) { s.src.held = false; s.src.hold = 0.1; s.src = null; }
+    if (s.down && s.tool === 'brush' && s.moved < 0.012 && performance.now() - s.t < 400) {
+      addSource({ kind: 'ink', x: s.x, y: s.y, pig: pigment, size: 0.6 });
+    }
+    if (e.pointerType === 'mouse' && e.type === 'pointerup') { s.down = false; s.fx = s.x; s.fy = s.y; }
+    else pointers.delete(e.pointerId);
+  }
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+  canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') { endPointer(e); pointers.delete(e.pointerId); } });
+
+  function applyInput(dt) {
+    const ar = aspect();
+    const force = CFG.FORCE * (reduced ? 0.55 : 1);
+    for (const s of pointers.values()) {
+      const ax = s.fx, ay = s.fy, bx = s.x, by = s.y;
+      s.fx = bx; s.fy = by;
+      const dist = Math.hypot((bx - ax) * ar, by - ay);
+      if (s.tool === 'brush') {
+        if (s.down) splatDye(bx, by, pigment.abs, 0.9 * dt, CFG.RADIUS * 0.7); // a still brush keeps bleeding
+        if (dist < 1e-5) continue;
+        let dx = bx - ax, dy = by - ay;
+        const n = Math.min(24, Math.max(1, Math.ceil(dist / 0.01)));
+        if (ar < 1) dx *= ar; else dy /= ar;
+        const k = (s.down ? 1 : 0.3) * force / n * Math.min(n, 3);
+        if (s.down) { sound.stir(dist * 1.6); noteUse(pigment, 'brush'); }
+        for (let i = 1; i <= n; i++) {
+          const t = i / n;
+          const x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
+          splatVel(x, y, dx * k, dy * k);
+          if (s.down) splatDye(x, y, pigment.abs, 0.11, CFG.RADIUS * 0.8);
+        }
+      } else if (s.down && dist > 1e-5 && (s.tool === 'stylus' || s.tool === 'comb')) {
+        pinStroke(ax, ay, bx, by, dt, s.tool === 'comb' ? COMB_SPACING : 0, pinWidth());
+        noteUse(null, s.tool);
+        stillWater(5);
+        sound.stir(dist * 0.8);
+      }
+    }
+  }
+  const COMB_SPACING = 0.055;
+
+  // ---------- invisible hand: scripted strokes (used by the intro and by pattern recipes) ----------
+  const hands = [];
+  function handStroke(toolId, x0, y0, x1, y1, dur, done) {
+    hands.push({ tool: toolId, x0, y0, x1, y1, dur: Math.max(0.05, dur), t: 0, px: x0, py: y0, done });
+  }
+  function updateHands(dt) {
+    for (let i = hands.length - 1; i >= 0; i--) {
+      const h = hands[i];
+      h.t = Math.min(h.dur, h.t + dt);
+      const f = h.t / h.dur;
+      const e = f < 0.5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2; // ease in-out, like a steady hand
+      const x = h.x0 + (h.x1 - h.x0) * e, y = h.y0 + (h.y1 - h.y0) * e;
+      if (!h.still) pinStroke(h.px, h.py, x, y, dt, h.tool === 'comb' ? COMB_SPACING : 0, pinWidth());
+      h.px = x; h.py = y;
+      if (h.t >= h.dur) { hands.splice(i, 1); if (h.done) h.done(); }
+    }
+  }
+
+  // timers on simulation time (also work during the synchronous warm-up)
+  const timers = [];
+  function after(sec, fn) { timers.push({ at: simT + sec, fn }); }
+  function runTimers() {
+    for (let i = timers.length - 1; i >= 0; i--) {
+      if (simT >= timers[i].at) { const f = timers[i].fn; timers.splice(i, 1); f(); }
+    }
+  }
+
+  // ---------- pattern recipes: an invisible hand performs a traditional pattern ----------
+  const CANCEL = { cancelled: true };
+  let recipe = null;
+  const touches = []; // brush-tip touches the hand makes, drawn faintly
+  const stepEl = $('step');
+  function takeOver() {
+    if (!recipe) return;
+    recipe.cancelled = true;
+    recipe = null;
+    hands.length = 0;
+    stepEl.classList.remove('show');
+    say('The tank is yours.', 2500);
+  }
+  function ambientBlocked() { return !!recipe; }
+  // positions in short-side units around the centre, so shapes stay round on any screen
+  function at(dx, dy) {
+    const ar = aspect();
+    return { x: 0.5 + dx * Math.min(1, 1 / ar), y: 0.5 + dy * Math.min(1, ar) };
+  }
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  function hand(rec) {
+    const chk = () => { if (rec.cancelled) throw CANCEL; };
+    const wait = async sec => { await new Promise(r => after(sec, r)); chk(); };
+    const api = {
+      wait,
+      step(i, n, text) {
+        chk();
+        stepEl.innerHTML = '';
+        const b = document.createElement('b');
+        b.textContent = `${rec.title}, ${i} of ${n}. `;
+        stepEl.append(b, document.createTextNode(text));
+        stepEl.classList.add('show');
+        stillWater(30);
+        markInput();
+      },
+      async drop(p, pig, size = 1, gap = 0.4) {
+        chk();
+        touches.push({ x: p.x, y: p.y, t: simT });
+        addSource({ kind: 'ink', x: p.x, y: p.y, pig, size });
+        await wait(gap);
+      },
+      async gall(p, size = 0.7, gap = 0.4) {
+        chk();
+        touches.push({ x: p.x, y: p.y, t: simT, clear: true });
+        addSource({ kind: 'clear', x: p.x, y: p.y, size });
+        await wait(gap);
+      },
+      async breathe(p, sec) {
+        chk();
+        const src = addSource({ kind: 'air', x: p.x, y: p.y, held: true });
+        hands.push({ tool: 'breath', x0: p.x, y0: p.y, x1: p.x, y1: p.y, dur: sec, t: 0, px: p.x, py: p.y, still: true });
+        await wait(sec);
+        src.held = false;
+      },
+      async stroke(toolId, a, b, dur) {
+        chk();
+        await new Promise(r => handStroke(toolId, a.x, a.y, b.x, b.y, dur, r));
+        chk();
+      },
+      async sprinkle(pig, count, s0, s1, gap) {
+        for (let i = 0; i < count; i++) await api.drop({ x: rnd(0.04, 0.96), y: rnd(0.05, 0.95) }, pig, rnd(s0, s1), gap);
+      },
+      async fresh() {
+        clearTank();
+        await wait(1.1);
+        usage.recipe = rec.title;
+      },
+    };
+    return api;
+  }
+  const RECIPES = {
+    suminagashi: {
+      title: 'Suminagashi', lore: "Suminagashi, 'floating ink', is the oldest known marbling, practised in Japan since the 12th century.",
+      async run(h) {
+        await h.fresh();
+        const C = at(-0.12, 0.06), D = at(0.2, -0.1);
+        h.step(1, 4, 'Touch the sumi brush to the water and a disc of ink opens.');
+        await h.drop(C, LIB.sumi, 1, 0.9);
+        h.step(2, 4, 'Then the second brush, wet only with a little gall, pushes the ink into a ring. Again and again.');
+        const seq = [[null, 0.7], [LIB.sumi, 0.6], [null, 0.55], [LIB.indigo, 0.5], [null, 0.45], [LIB.sumi, 0.45], [null, 0.4]];
+        for (const [pig, z] of seq) { if (pig) await h.drop(C, pig, z, 0.45); else await h.gall(C, z, 0.45); }
+        h.step(3, 4, 'A second centre beside the first, ring within ring.');
+        const seq2 = [[LIB.sumi, 0.8], [null, 0.6], [LIB.sumi, 0.55], [null, 0.5], [LIB.indigo, 0.45], [null, 0.4]];
+        for (const [pig, z] of seq2) { if (pig) await h.drop(D, pig, z, 0.45); else await h.gall(D, z, 0.45); }
+        await h.wait(0.6);
+        h.step(4, 4, 'A breath and a slow stylus set the rings drifting into currents.');
+        await h.breathe(at(-0.55, -0.3), 1.4);
+        await h.stroke('stylus', at(-0.6, 0.3), at(0.6, -0.32), 2.4);
+      },
+    },
+    stone: {
+      title: 'Stone pattern', lore: "Battal, the 'stone' ground, is where every ebru begins.",
+      async run(h) {
+        await h.fresh();
+        h.step(1, 4, 'Sprinkle the first colour over the whole tank.');
+        await h.sprinkle(LIB.prussian, 26, 0.5, 0.75, 0.09);
+        h.step(2, 4, 'A second colour falls into the gaps and crowds the first into stones.');
+        await h.sprinkle(LIB.gamboge, 24, 0.4, 0.6, 0.09);
+        h.step(3, 4, 'A third, smaller still: each colour spreads a little less than the one before.');
+        await h.sprinkle(LIB.vermilion, 20, 0.3, 0.45, 0.09);
+        h.step(4, 4, 'Drops of gall open pale veins between the stones.');
+        for (let i = 0; i < 10; i++) await h.gall({ x: rnd(0.05, 0.95), y: rnd(0.06, 0.94) }, rnd(0.25, 0.4), 0.12);
+      },
+    },
+    gelgit: {
+      title: 'Gel-git', lore: "Gel-git means 'come and go' in Turkish, for the stylus drawn back and forth.",
+      async run(h) {
+        await h.fresh();
+        h.step(1, 3, 'First a stone ground of two colours.');
+        await h.sprinkle(LIB.indigo, 22, 0.5, 0.7, 0.07);
+        await h.sprinkle(LIB.vermilion, 20, 0.35, 0.55, 0.07);
+        await h.sprinkle(LIB.gamboge, 14, 0.3, 0.4, 0.07);
+        await h.wait(0.5);
+        h.step(2, 3, "The stylus goes across and back, row after row: gel-git, 'come and go'.");
+        let dir = 1;
+        for (let y = 0.07; y < 0.95; y += 0.075) {
+          await h.stroke('stylus', { x: dir > 0 ? -0.02 : 1.02, y }, { x: dir > 0 ? 1.02 : -0.02, y }, 0.9);
+          dir = -dir;
+        }
+        h.step(3, 3, 'Then crosswise, up and down, and the stones fold into chevrons.');
+        dir = 1;
+        for (let x = 0.06; x < 0.97; x += 0.11) {
+          await h.stroke('stylus', { x, y: dir > 0 ? 1.02 : -0.02 }, { x, y: dir > 0 ? -0.02 : 1.02 }, 0.8);
+          dir = -dir;
+        }
+      },
+    },
+    nonpareil: {
+      title: 'Nonpareil', lore: "Nonpareil, 'without equal', was a favourite endpaper pattern of nineteenth-century bookbinders.",
+      async run(h) {
+        await h.fresh();
+        h.step(1, 3, 'A close stone ground of three colours.');
+        await h.sprinkle(LIB.prussian, 28, 0.4, 0.55, 0.06);
+        await h.sprinkle(LIB.vermilion, 26, 0.3, 0.45, 0.06);
+        await h.sprinkle(LIB.gamboge, 22, 0.25, 0.35, 0.06);
+        await h.wait(0.5);
+        h.step(2, 3, 'Gel-git: the stylus back and forth across the tank.');
+        let dir = 1;
+        for (let y = 0.05; y < 0.97; y += 0.06) {
+          await h.stroke('stylus', { x: dir > 0 ? -0.02 : 1.02, y }, { x: dir > 0 ? 1.02 : -0.02, y }, 0.7);
+          dir = -dir;
+        }
+        h.step(3, 3, 'Then a fine comb, drawn once and slowly through everything.');
+        await h.stroke('comb', { x: 0.5, y: 1.03 }, { x: 0.5, y: -0.03 }, 4.5);
+      },
+    },
+    tulip: {
+      title: 'Tulip', lore: 'Necmeddin Okyay brought flowers into ebru in the early twentieth century; the tulip is the best loved.',
+      async run(h) {
+        await h.fresh();
+        const F = at(0, 0.1);
+        h.step(1, 4, 'A large drop of vermilion, then gamboge inside it, then vermilion again.');
+        await h.drop(F, LIB.vermilion, 1.5, 1.1);
+        await h.drop(F, LIB.gamboge, 0.8, 0.8);
+        await h.drop(F, LIB.vermilion, 0.4, 0.8);
+        h.step(2, 4, 'The stylus enters at the top and is drawn down through the heart; the petals close into a tulip.');
+        await h.stroke('stylus', at(0, 0.36), at(0, -0.14), 2.2);
+        await h.wait(0.4);
+        h.step(3, 4, 'A thin stem of sap green, pulled down.');
+        await h.drop(at(0, -0.1), LIB.sapgreen, 0.35, 0.5);
+        await h.stroke('stylus', at(0, -0.08), at(0, -0.42), 1.8);
+        h.step(4, 4, 'A leaf each side: a drop of green, pulled outward and up.');
+        await h.drop(at(-0.07, -0.28), LIB.sapgreen, 0.55, 0.4);
+        await h.drop(at(0.07, -0.3), LIB.sapgreen, 0.55, 0.6);
+        await h.stroke('stylus', at(-0.05, -0.31), at(-0.2, -0.12), 1.4);
+        await h.stroke('stylus', at(0.05, -0.33), at(0.2, -0.14), 1.4);
+      },
+    },
+  };
+  async function playRecipe(id) {
+    const R = RECIPES[id];
+    if (!R || lifted) return;
+    takeOver();
+    const rec = { title: R.title, cancelled: false };
+    recipe = rec;
+    setLore(R.lore);
+    say('Touch the water at any time to take over.', 3500);
+    try {
+      await R.run(hand(rec));
+      if (recipe === rec) {
+        stepEl.innerHTML = '';
+        const b = document.createElement('b');
+        b.textContent = `${R.title}. `;
+        stepEl.append(b, document.createTextNode('Lift the print, or carry on by hand.'));
+        recipe = null;
+        markInput();
+        stillWater(8);
+        setTimeout(() => { if (!recipe) stepEl.classList.remove('show'); }, 6000);
+      }
+    } catch (e) {
+      if (e !== CANCEL) throw e;
+    }
+  }
+  const patternSel = $('pattern');
+  patternSel.addEventListener('change', () => {
+    const v = patternSel.value;
+    patternSel.value = '';
+    if (v) playRecipe(v);
+  });
+
+  // ---------- ambient currents ----------
+  const emitters = [
+    { a: 0.071, b: 0.053, p: 0.0, q: 1.3, ink: 0, pig: null },
+    { a: 0.047, b: 0.083, p: 2.1, q: 4.0, ink: 0, pig: null },
+    { a: 0.061, b: 0.039, p: 4.4, q: 2.6, ink: 0, pig: null },
+  ];
+  let ambLevel = 1, nextDrop = 0;
+  function ambientPigment() {
+    const pool = [pigment.id, pigment.id, pigment.id].concat(palette.map(p => p.id));
+    return LIB[pool[(Math.random() * pool.length) | 0]];
+  }
+  function ambient(dt, t) {
+    const idle = performance.now() - lastInput > 8000 && !ambientBlocked();
+    ambLevel += ((idle ? 1 : 0) - ambLevel) * Math.min(1, dt * 0.6);
+    if (idle && lastInput > 0 && performance.now() - lastInput > 9000) setLore(LORE.idle);
+    if (ambLevel < 0.02) return;
+    const slow = reduced ? 0.6 : 1;
+    const k = ambLevel * slow * (1 - 0.8 * settle);
+    for (const e of emitters) {
+      const tt = t * slow;
+      const x = 0.5 + 0.36 * Math.sin(tt * e.a * 6.283 + e.p);
+      const y = 0.5 + 0.33 * Math.sin(tt * e.b * 6.283 + e.q);
+      const vx = 0.36 * e.a * 6.283 * Math.cos(tt * e.a * 6.283 + e.p);
+      const vy = 0.33 * e.b * 6.283 * Math.cos(tt * e.b * 6.283 + e.q);
+      splatVel(x, y, vx * 45 * k, vy * 45 * k, 0.005);
+      if (e.ink > t && e.pig) splatDye(x, y, e.pig.abs, 0.5 * dt * ambLevel, 0.0007);
+    }
+    if (t > nextDrop) {
+      nextDrop = t + (2.6 + Math.random() * 4) * (reduced ? 1.7 : 1);
+      const x = 0.14 + Math.random() * 0.72, y = 0.2 + Math.random() * 0.62;
+      const r = Math.random();
+      if (r < 0.62) addSource({ kind: 'ink', x, y, pig: ambientPigment(), size: (0.5 + Math.random() * 0.8) * ambLevel });
+      else if (r < 0.85) addSource({ kind: 'clear', x, y, size: 0.5 + Math.random() * 0.5 });
+      else {
+        const e = emitters[(Math.random() * emitters.length) | 0];
+        e.ink = t + 1.5 + Math.random() * 2.5;
+        e.pig = ambientPigment();
+      }
+    }
+  }
+
+  // ---------- simulation step ----------
+  let clearing = 0, simT = 0;
+  function step(dt) {
+    gl.disable(gl.BLEND);
+    const s = velocity;
+    const curl = CFG.CURL * (reduced ? 0.5 : 1) * (1 - 0.8 * settle) * mood.curl;
+    P.curl.bind().f('texelSize', s.tx, s.ty).i('uVelocity', s.read.attach(0));
+    blit(curlT);
+    P.vorticity.bind().f('texelSize', s.tx, s.ty)
+      .i('uVelocity', s.read.attach(0)).i('uCurl', curlT.attach(1))
+      .f('curl', curl).f('dt', dt);
+    blit(s.write); s.swap();
+    P.divergence.bind().f('texelSize', s.tx, s.ty).i('uVelocity', s.read.attach(0));
+    blit(divergence);
+    P.copy.bind().i('uTexture', pressure.read.attach(0)).f('value', CFG.PRESSURE);
+    blit(pressure.write); pressure.swap();
+    P.pressure.bind().f('texelSize', s.tx, s.ty).i('uDivergence', divergence.attach(0));
+    for (let i = 0; i < CFG.PRESSURE_ITER; i++) {
+      P.pressure.i('uPressure', pressure.read.attach(1));
+      blit(pressure.write); pressure.swap();
+    }
+    P.gradient.bind().f('texelSize', s.tx, s.ty)
+      .i('uPressure', pressure.read.attach(0)).i('uVelocity', s.read.attach(1));
+    blit(s.write); s.swap();
+    const drain = clearing > 0 ? 7 : 0;
+    const visc = CFG.VEL_DISSIPATION + settle * 2.4 + mood.visc;
+    P.advect.bind().f('aspectRatio', aspect()).v4('uSrc', srcArr).f('texelSize', s.tx, s.ty).f('srcTexelSize', s.tx, s.ty)
+      .i('uVelocity', s.read.attach(0)).i('uSource', s.read.attach(0))
+      .f('dt', dt).f('dissipation', visc + drain * 0.3);
+    blit(s.write); s.swap();
+    P.advect.bind().f('texelSize', s.tx, s.ty).f('srcTexelSize', dye.tx, dye.ty)
+      .i('uVelocity', s.read.attach(0)).i('uSource', dye.read.attach(1))
+      .f('dt', dt).f('dissipation', CFG.DYE_DISSIPATION + drain);
+    blit(dye.write); dye.swap();
+  }
+
+  // ---------- water moods ----------
+  const lin = hex => [1, 3, 5].map(i => Math.pow(parseInt(hex.substr(i, 2), 16) / 255, 2.2));
+  const MOODS = {
+    still: { paper: '#eceeea', palette: ['sumi', 'indigo', 'prussian', 'vermilion', 'gamboge'], caus: 1, lamp: 0, curl: 1, visc: 0,
+      koi: 2, koiSpeed: 1, floater: 'ginkgo', every: [22, 40], lore: LORE.start },
+    spring: { paper: '#efecea', palette: ['sumi', 'madder', 'sapgreen', 'indigo', 'gamboge'], caus: 1.2, lamp: 0, curl: 1.1, visc: 0,
+      koi: 2, koiSpeed: 1.1, floater: 'petal', every: [7, 14], lore: 'Rose madder comes from the root of the madder plant, a red dye for thousands of years.' },
+    autumn: { paper: '#e8e6e0', palette: ['sumi', 'vermilion', 'gamboge', 'sienna', 'prussian'], caus: 0.9, lamp: 0, curl: 1, visc: 0.1,
+      koi: 2, koiSpeed: 0.85, floater: 'maple', every: [12, 24], lore: 'Gamboge is a resin tapped from Garcinia trees, as yellow as egg yolk.' },
+    winter: { paper: '#f4f6f7', palette: ['sumi', 'paynes', 'indigo', 'prussian'], caus: 0.45, lamp: 0, curl: 0.45, visc: 0.9,
+      koi: 1, koiSpeed: 0.45, floater: 'snow', every: [1.2, 3], lore: 'Cold size is heavy, so colours move slowly and keep their edges.' },
+    night: { paper: '#e6d8bd', palette: ['indigo', 'sumi', 'prussian', 'vermilion'], caus: 0.6, lamp: 1, curl: 1, visc: 0,
+      koi: 2, koiSpeed: 0.9, floater: null, rain: true, every: [30, 60],
+      lore: 'Prussian blue, the first modern synthetic pigment, was made by accident in Berlin around 1706.' },
+  };
+  let moodId = 'still';
+  let mood = { paper: lin('#eceeea'), caus: 1, lamp: 0, curl: 1, visc: 0 };
+  let moodT = mood;
+  function applyMood(id, fromUser) {
+    const M = MOODS[id];
+    moodId = id;
+    moodT = { paper: lin(M.paper), caus: M.caus, lamp: M.lamp, curl: M.curl, visc: M.visc };
+    palette = M.palette.map(k => LIB[k]);
+    buildPalette();
+    document.documentElement.style.setProperty('--paper', M.paper);
+    setKoiCount(M.koi);
+    lifeState.nextFloat = simT + 3;
+    if (fromUser) { setLore(M.lore); markInput(); }
+  }
+  function blendMood(dt) {
+    const k = Math.min(1, dt * 1.2);
+    for (let i = 0; i < 3; i++) mood.paper[i] += (moodT.paper[i] - mood.paper[i]) * k;
+    for (const key of ['caus', 'lamp', 'curl', 'visc']) mood[key] += (moodT[key] - mood[key]) * k;
+  }
+  const sheetLin = lin('#f2f2ee'), tableLin = lin('#3a4246'), lampLin = lin('#ffd9a0');
+
+  // ---------- camera motion ----------
+  // The video is only ever read as a 64x48 brightness grid on a hidden canvas.
+  const GW = 64, GH = 48, BS = 4, BX = GW / BS, BY = GH / BS;
+  const cam = { on: false, stream: null, video: null, ctx: null, prev: new Float32Array(GW * GH), cur: new Float32Array(GW * GH), primed: false, lastT: -1 };
+  const ghostBuf = new Float32Array(GW * GH);
+  const ghostBytes = new Uint8Array(GW * GH);
+  let ghostOn = false, ghostAmt = 0;
+  const ghostTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, ghostTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, GW, GH, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, ghostBytes);
+  function bindGhost(unit) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, ghostTex); return unit; }
+
+  const camBtn = $('cam'), ghostBtn = $('ghost');
+  const CAM_FAIL = "Camera isn't available here. Move your pointer or finger through the water instead.";
+  camBtn.addEventListener('click', () => {
+    if (cam.on) { stopCamera(); return; }
+    let req;
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('none');
+      req = navigator.mediaDevices.getUserMedia({ video: true });
+    } catch (e) { say(CAM_FAIL, 7000); return; }
+    camBtn.disabled = true;
+    req.then(startCamera).catch(() => say(CAM_FAIL, 7000)).finally(() => { camBtn.disabled = false; });
+  });
+  ghostBtn.addEventListener('click', () => {
+    ghostOn = !ghostOn;
+    ghostBtn.setAttribute('aria-pressed', String(ghostOn));
+  });
+  async function startCamera(stream) {
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true;
+    v.setAttribute('playsinline', ''); v.setAttribute('muted', '');
+    v.setAttribute('aria-hidden', 'true');
+    v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none;';
+    document.body.appendChild(v);
+    v.srcObject = stream;
+    try { await v.play(); } catch (e) { stream.getTracks().forEach(t => t.stop()); v.remove(); say(CAM_FAIL, 7000); return; }
+    const c = document.createElement('canvas');
+    c.width = GW; c.height = GH;
+    cam.ctx = c.getContext('2d', { willReadFrequently: true });
+    cam.stream = stream; cam.video = v; cam.on = true; cam.primed = false; cam.lastT = -1;
+    camBtn.setAttribute('aria-pressed', 'true');
+    ghostBtn.hidden = false;
+    hintEl.textContent = 'Move in front of the camera. Wherever you move, the water moves and colour follows.';
+    setLore(LORE.camera);
+    say('Camera on. Nothing is recorded; only a tiny grid of motion is read.', 5000);
+  }
+  function stopCamera() {
+    if (cam.stream) cam.stream.getTracks().forEach(t => t.stop());
+    if (cam.video) cam.video.remove();
+    cam.on = false; cam.stream = null; cam.video = null;
+    camBtn.setAttribute('aria-pressed', 'false');
+    ghostBtn.hidden = true; ghostOn = false; ghostBtn.setAttribute('aria-pressed', 'false');
+    ghostBuf.fill(0);
+    hintEl.textContent = tool.hint;
+  }
+  let camEnergy = 0;
+  const cameraMoves = [];
+  function readCamera() {
+    const v = cam.video;
+    if (!cam.on || !v || v.readyState < 2 || !v.videoWidth) return;
+    if (v.currentTime === cam.lastT) return;
+    cam.lastT = v.currentTime;
+    const sa = canvas.width / canvas.height, va = v.videoWidth / v.videoHeight;
+    let sw = v.videoWidth, sh = v.videoHeight, sx = 0, sy = 0;
+    if (va > sa) { sw = sh * sa; sx = (v.videoWidth - sw) / 2; } else { sh = sw / sa; sy = (v.videoHeight - sh) / 2; }
+    const ctx = cam.ctx;
+    ctx.setTransform(-1, 0, 0, 1, GW, 0);
+    ctx.drawImage(v, sx, sy, sw, sh, 0, 0, GW, GH);
+    const px = ctx.getImageData(0, 0, GW, GH).data;
+    const t = cam.prev; cam.prev = cam.cur; cam.cur = t;
+    const cur = cam.cur, prev = cam.prev;
+    for (let i = 0, j = 0; i < GW * GH; i++, j += 4) cur[i] = (0.299 * px[j] + 0.587 * px[j + 1] + 0.114 * px[j + 2]) / 255;
+    if (!cam.primed) { cam.primed = true; return; }
+    // Lucas-Kanade over 4x4 blocks: a little optical flow from brightness gradients.
+    const hits = [];
+    let total = 0;
+    for (let by = 0; by < BY; by++) for (let bx = 0; bx < BX; bx++) {
+      let sxx = 0, sxy = 0, syy = 0, sxt = 0, syt = 0, e = 0;
+      for (let yy = 0; yy < BS; yy++) {
+        const y = by * BS + yy;
+        if (y < 1 || y >= GH - 1) continue;
+        for (let xx = 0; xx < BS; xx++) {
+          const x = bx * BS + xx;
+          if (x < 1 || x >= GW - 1) continue;
+          const i = y * GW + x;
+          const ix = 0.25 * (cur[i + 1] - cur[i - 1] + prev[i + 1] - prev[i - 1]);
+          const iy = 0.25 * (cur[i + GW] - cur[i - GW] + prev[i + GW] - prev[i - GW]);
+          const it = cur[i] - prev[i];
+          sxx += ix * ix; sxy += ix * iy; syy += iy * iy; sxt += ix * it; syt += iy * it;
+          e += Math.abs(it);
+          ghostBuf[i] = Math.max(ghostBuf[i] * 0.9, Math.min(1, Math.abs(it) * 4));
+        }
+      }
+      e /= BS * BS;
+      total += e;
+      if (e < 0.035) continue;
+      const det = sxx * syy - sxy * sxy;
+      let u = 0, w = 0;
+      if (det > 1e-6) {
+        u = (-syy * sxt + sxy * syt) / det;
+        w = (sxy * sxt - sxx * syt) / det;
+        const m = Math.hypot(u, w);
+        if (m > 3) { u *= 3 / m; w *= 3 / m; }
+      }
+      hits.push({ bx, by, e, u, w });
+    }
+    for (let i = 0; i < GW * GH; i++) {
+      if (!ghostOn) ghostBuf[i] *= 0.9;
+      ghostBytes[i] = Math.min(255, ghostBuf[i] * 255) | 0;
+    }
+    gl.bindTexture(gl.TEXTURE_2D, ghostTex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, GW, GH, gl.LUMINANCE, gl.UNSIGNED_BYTE, ghostBytes);
+    camEnergy = camEnergy * 0.8 + total / (BX * BY) * 2;
+    sound.stir(Math.min(0.2, camEnergy * 0.25));
+    if (!hits.length) return;
+    markInput();
+    takeOver();
+    hits.sort((a, b) => b.e - a.e);
+    const ar = aspect();
+    const force = CFG.FORCE * (reduced ? 0.5 : 1) * 0.9;
+    const n = Math.min(hits.length, 22);
+    for (let k = 0; k < n; k++) {
+      const h = hits[k];
+      const x = (h.bx + 0.2 + Math.random() * 0.6) / BX;
+      const y = 1 - (h.by + 0.2 + Math.random() * 0.6) / BY;
+      let dx = h.u / GW, dy = -h.w / GH;
+      if (ar < 1) dx *= ar; else dy /= ar;
+      const strength = Math.min(1, h.e * 6);
+      cameraMoves.push({ x, y, vx: dx * force, vy: dy * force, ink: k < 10 ? 0.07 * strength : 0 });
+    }
+    noteUse(pigment, 'camera');
+  }
+  function applyCamera() {
+    for (const m of cameraMoves) {
+      splatVel(m.x, m.y, m.vx, m.vy, 0.0016);
+      if (m.ink > 0) splatDye(m.x, m.y, pigment.abs, m.ink, 0.0009);
+    }
+    cameraMoves.length = 0;
+  }
+
+  // ---------- overlay: tool shadows (and, later, life in the water) ----------
+  function drawOverlay() {
+    const W = lifeCv.width, H = lifeCv.height, d = dprNow;
+    lctx.setTransform(1, 0, 0, 1, 0, 0);
+    lctx.clearRect(0, 0, W, H);
+    lctx.setTransform(d, 0, 0, d, 0, 0);
+    const toPx = (x, y) => [x * cssW, (1 - y) * cssH];
+    const ghosts = [];
+    for (const s of pointers.values()) if (s.down) ghosts.push({ tool: s.tool, x: s.x, y: s.y, s });
+    for (const h of hands) ghosts.push({ tool: h.tool, x: h.px, y: h.py, ax: h.x0, ay: h.y0, bx: h.x1, by: h.y1 });
+    for (const g of ghosts) {
+      const [px, py] = toPx(g.x, g.y);
+      lctx.fillStyle = 'rgba(28,29,32,0.42)';
+      lctx.strokeStyle = 'rgba(28,29,32,0.22)';
+      if (g.tool === 'stylus') {
+        lctx.beginPath(); lctx.arc(px, py, 3, 0, 6.283); lctx.fill();
+      } else if (g.tool === 'comb') {
+        // the comb is drawn across the whole tank, perpendicular to its travel
+        let dx, dy;
+        if (g.s) { dx = g.s.cdx || 1; dy = g.s.cdy || 0; }
+        else { dx = (g.bx - g.ax) * cssW; dy = -(g.by - g.ay) * cssH; const m = Math.hypot(dx, dy) || 1; dx /= m; dy /= m; }
+        const nx = -dy, ny = dx;
+        const sp = COMB_SPACING * Math.min(cssW, cssH);
+        const reach = Math.hypot(cssW, cssH);
+        lctx.beginPath();
+        lctx.moveTo(px - nx * reach, py - ny * reach); lctx.lineTo(px + nx * reach, py + ny * reach);
+        lctx.lineWidth = 1; lctx.stroke();
+        for (let k = -Math.ceil(reach / sp); k <= Math.ceil(reach / sp); k++) {
+          const qx = px + nx * sp * k, qy = py + ny * sp * k;
+          if (qx < -4 || qy < -4 || qx > cssW + 4 || qy > cssH + 4) continue;
+          lctx.beginPath(); lctx.arc(qx, qy, 2.2, 0, 6.283); lctx.fill();
+        }
+      } else if (g.tool === 'breath') {
+        const ph = (simT * 0.9) % 1;
+        for (let k = 0; k < 2; k++) {
+          const f = (ph + k * 0.5) % 1;
+          lctx.beginPath(); lctx.arc(px, py, 18 + f * 70, 0, 6.283);
+          lctx.strokeStyle = `rgba(28,29,32,${0.16 * (1 - f)})`; lctx.lineWidth = 1.2; lctx.stroke();
+        }
+      }
+    }
+    for (let i = touches.length - 1; i >= 0; i--) {
+      const f = (simT - touches[i].t) / 0.7;
+      if (f >= 1 || f < 0) { touches.splice(i, 1); continue; }
+      const [px, py] = toPx(touches[i].x, touches[i].y);
+      lctx.beginPath(); lctx.arc(px, py, 5 + f * 12, 0, 6.283);
+      lctx.strokeStyle = `rgba(28,29,32,${0.3 * (1 - f)})`; lctx.lineWidth = 1; lctx.stroke();
+    }
+    drawLife(toPx);
+  }
+  // ---------- life in the water: koi below, leaves and weather above ----------
+  let lifeOn = true;
+  const lifeState = { koi: [], floaters: [], ripples: [], nextFloat: 6, nextRain: 0, fade: 1 };
+  function setKoiCount(n) {
+    while (lifeState.koi.length < n) {
+      lifeState.koi.push({ x: rnd(0.2, 0.8), y: rnd(0.25, 0.75), h: rnd(0, 6.283), turn: 0, phase: rnd(0, 6), len: rnd(0.065, 0.085), a: 0 });
+    }
+    lifeState.koi.length = n;
+  }
+  function ripple(x, y, big) { lifeState.ripples.push({ x, y, t: simT, big }); }
+  function spawnFloater(kind) {
+    const z = 1;
+    const f = {
+      kind, x: rnd(0.12, 0.88), y: rnd(0.2, 0.85), z, age: 0, fall: reduced ? 1.4 : rnd(3.2, 4.4),
+      rot: rnd(0, 6.283), rotV: rnd(-0.25, 0.25), vx: rnd(-0.006, 0.006), vy: rnd(-0.004, 0.004),
+      size: { maple: 46, ginkgo: 40, petal: 15, snow: 11 }[kind] * rnd(0.85, 1.15),
+      hue: ['#bf431d', '#cd5a1e', '#b0311f', '#c9761e'][(Math.random() * 4) | 0],
+      life: kind === 'snow' ? 3 : rnd(30, 42), sway: rnd(0, 6),
+    };
+    lifeState.floaters.push(f);
+  }
+  function updateLife(dt) {
+    const M = MOODS[moodId];
+    const show = lifeOn && !recipe ? 1 : 0;
+    const ar = aspect(), kx = Math.min(1, 1 / ar), ky = Math.min(1, ar);
+    // koi: soft shadows under the surface whose bodies and tails displace the colour
+    for (const k of lifeState.koi) {
+      k.a += (show - k.a) * Math.min(1, dt * 0.8);
+      const sp = 0.055 * M.koiSpeed * (reduced ? 0.6 : 1);
+      k.turn += (rnd(-1, 1) * 1.6 - k.turn * 0.6) * dt;
+      let h = k.h + k.turn * dt;
+      const m = 0.13;
+      if (k.x < m || k.x > 1 - m || k.y < m || k.y > 1 - m) {
+        const want = Math.atan2((0.5 - k.y) / ky, (0.5 - k.x) / kx);
+        let d = want - h;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        h += d * Math.min(1, dt * 1.2);
+      }
+      k.h = h;
+      const dx = Math.cos(h), dy = Math.sin(h);
+      k.x += dx * sp * kx * dt;
+      k.y += dy * sp * ky * dt;
+      k.phase += dt * (5 + sp * 40);
+      if (k.a < 0.05) continue;
+      const tx = k.x - dx * k.len * kx, ty = k.y - dy * k.len * ky;
+      const v = [dx * sp * kx * velocity.w, dy * sp * ky * velocity.h];
+      pinStroke(tx, ty, k.x, k.y, dt, 0, k.len * 0.22, v, 0.35 * k.a);
+      const tail = Math.sin(k.phase);
+      splatVel(k.x - dx * k.len * 1.25 * kx, k.y - dy * k.len * 1.25 * ky, -dy * tail * 40 * k.a, dx * tail * 40 * k.a, 0.0004);
+    }
+    // leaves, petals, snow
+    lifeState.nextFloat = Math.min(lifeState.nextFloat, simT + M.every[1]);
+    if (show && M.floater && simT > lifeState.nextFloat && lifeState.floaters.length < 7) {
+      lifeState.nextFloat = simT + rnd(M.every[0], M.every[1]) * (reduced ? 1.6 : 1);
+      const n = M.floater === 'petal' ? 1 + ((Math.random() * 3) | 0) : 1;
+      for (let i = 0; i < n; i++) spawnFloater(M.floater);
+    }
+    for (let i = lifeState.floaters.length - 1; i >= 0; i--) {
+      const f = lifeState.floaters[i];
+      f.age += dt;
+      if (f.z > 0) {
+        f.z = Math.max(0, 1 - f.age / f.fall);
+        if (f.z === 0) {
+          f.landed = simT;
+          ripple(f.x, f.y, f.kind !== 'snow' && f.kind !== 'petal');
+          if (f.kind === 'snow') addSource({ kind: 'clear', x: f.x, y: f.y, size: 0.18 });
+          else addSource({ kind: 'rain', x: f.x, y: f.y, strength: f.kind === 'petal' ? 1.5 : 3 });
+          sound.pluck(0.25, f.kind === 'snow' ? 4 : 0);
+        }
+        continue;
+      }
+      f.rot += f.rotV * dt;
+      f.x += f.vx * dt; f.y += f.vy * dt;
+      if (f.kind !== 'snow') {
+        const r = f.size / Math.min(cssW, cssH);
+        splatVel(f.x, f.y, f.vx * velocity.w, f.vy * velocity.h, r * r * 0.5, f.rotV * 30);
+      }
+      if (f.age > f.fall + f.life || f.x < -0.1 || f.x > 1.1 || f.y < -0.1 || f.y > 1.1) lifeState.floaters.splice(i, 1);
+    }
+    // night rain pocking the surface
+    if (M.rain && show && simT > lifeState.nextRain) {
+      lifeState.nextRain = simT + rnd(0.12, 0.55) * (reduced ? 2.2 : 1);
+      const x = rnd(0.02, 0.98), y = rnd(0.02, 0.98);
+      ripple(x, y, false);
+      addSource({ kind: 'rain', x, y });
+    }
+  }
+
+  function koiPath(k, toPx) {
+    const ar = aspect(), kx = Math.min(1, 1 / ar), ky = Math.min(1, ar);
+    const dx = Math.cos(k.h), dy = Math.sin(k.h);
+    const pts = [];
+    const N = 10;
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const sw = Math.sin(k.phase - t * 2.6) * 0.022 * t * t * 1.6;
+      const x = k.x - dx * k.len * 1.3 * t * kx - dy * sw * kx;
+      const y = k.y - dy * k.len * 1.3 * t * ky + dx * sw * ky;
+      pts.push(toPx(x, y));
+    }
+    return pts;
+  }
+  function drawLife(toPx) {
+    const S = Math.min(cssW, cssH);
+    const night = moodId === 'night';
+    for (const k of lifeState.koi) {
+      if (k.a < 0.02) continue;
+      const pts = koiPath(k, toPx);
+      const L = k.len * S;
+      const col = night ? '20,22,34' : '22,32,46';
+      for (let i = 0; i < pts.length; i++) {
+        const t = i / (pts.length - 1);
+        const r = L * (0.2 * Math.pow(Math.sin(Math.PI * Math.min(1, 0.12 + t * 0.95)), 0.8) + 0.035);
+        const g = lctx.createRadialGradient(pts[i][0], pts[i][1], 0, pts[i][0], pts[i][1], r * 1.6);
+        g.addColorStop(0, `rgba(${col},${0.075 * k.a})`);
+        g.addColorStop(1, `rgba(${col},0)`);
+        lctx.fillStyle = g;
+        lctx.beginPath(); lctx.arc(pts[i][0], pts[i][1], r * 1.6, 0, 6.283); lctx.fill();
+      }
+      // pectoral fins and tail as soft lobes
+      const [hx, hy] = pts[2], [ex, ey] = pts[pts.length - 1], [px2, py2] = pts[pts.length - 2];
+      const ang = Math.atan2(ey - py2, ex - px2);
+      lctx.fillStyle = `rgba(${col},${0.06 * k.a})`;
+      for (const sgn of [-1, 1]) {
+        const fa = Math.atan2(pts[1][1] - pts[3][1], pts[1][0] - pts[3][0]) + sgn * 2.1 + Math.sin(k.phase * 0.5) * 0.2 * sgn;
+        lctx.beginPath();
+        lctx.ellipse(hx + Math.cos(fa) * L * 0.2, hy + Math.sin(fa) * L * 0.2, L * 0.17, L * 0.07, fa, 0, 6.283);
+        lctx.fill();
+        const ta = ang + sgn * (0.45 + Math.sin(k.phase) * 0.15);
+        lctx.beginPath();
+        lctx.ellipse(ex + Math.cos(ta) * L * 0.16, ey + Math.sin(ta) * L * 0.16, L * 0.2, L * 0.075, ta, 0, 6.283);
+        lctx.fill();
+      }
+    }
+    for (let i = lifeState.ripples.length - 1; i >= 0; i--) {
+      const r = lifeState.ripples[i];
+      const f = (simT - r.t) / (r.big ? 1.8 : 1.1);
+      if (f >= 1 || f < 0) { lifeState.ripples.splice(i, 1); continue; }
+      const [px, py] = toPx(r.x, r.y);
+      const R = (r.big ? 70 : 26) * Math.sqrt(f);
+      for (const [off, a] of [[0, 0.24], [-0.35, 0.12]]) {
+        const rr = R * (1 + off);
+        if (rr <= 1) continue;
+        lctx.beginPath(); lctx.arc(px, py, rr, 0, 6.283);
+        lctx.strokeStyle = night ? `rgba(255,236,200,${a * (1 - f)})` : `rgba(30,38,48,${a * (1 - f)})`;
+        lctx.lineWidth = 1; lctx.stroke();
+      }
+    }
+    for (const f of lifeState.floaters) {
+      const [px, py] = toPx(f.x, f.y);
+      let alpha = 1;
+      if (f.kind === 'snow' && f.landed) alpha = Math.max(0, 1 - (simT - f.landed) / 2.5);
+      else if (f.age > f.fall + f.life - 3) alpha = Math.max(0, (f.fall + f.life - f.age) / 3);
+      if (alpha <= 0) continue;
+      const z = f.z;
+      const sway = z > 0 ? Math.sin(f.age * 1.7 + f.sway) * 26 * z : 0;
+      const scale = 1 + z * 0.55;
+      const rot = f.rot + (z > 0 ? Math.sin(f.age * 1.3 + f.sway) * 0.8 * z : 0);
+      // shadow on the water, drawing closer as it falls
+      lctx.save();
+      lctx.translate(px + 3 + z * 26, py + 4 + z * 30);
+      lctx.rotate(rot);
+      lctx.scale(f.size * (1 + z * 0.3), f.size * (1 + z * 0.3));
+      leafPath(f);
+      lctx.fillStyle = `rgba(20,26,34,${(0.13 - z * 0.08) * alpha})`;
+      lctx.fill();
+      lctx.restore();
+      lctx.save();
+      lctx.globalAlpha = alpha;
+      lctx.translate(px + sway, py - z * 10);
+      lctx.rotate(rot);
+      lctx.scale(f.size * scale, f.size * scale);
+      leafPath(f);
+      if (f.kind === 'snow') {
+        lctx.strokeStyle = 'rgba(110,130,150,0.85)'; lctx.lineWidth = 0.09; lctx.stroke();
+      } else {
+        lctx.fillStyle = f.kind === 'maple' ? f.hue : f.kind === 'ginkgo' ? '#d7a52b' : '#efc3cb';
+        lctx.fill();
+        lctx.strokeStyle = f.kind === 'petal' ? 'rgba(196,96,120,0.5)' : 'rgba(90,50,10,0.35)';
+        lctx.lineWidth = 0.025;
+        leafVeins(f);
+      }
+      lctx.restore();
+    }
+  }
+  function leafPath(f) {
+    const c = lctx;
+    c.beginPath();
+    if (f.kind === 'ginkgo') {
+      c.moveTo(0, 0.12);
+      c.bezierCurveTo(-0.25, 0.05, -0.56, -0.13, -0.5, -0.34);
+      c.quadraticCurveTo(-0.26, -0.5, -0.05, -0.43);
+      c.lineTo(0, -0.3);
+      c.lineTo(0.05, -0.43);
+      c.quadraticCurveTo(0.26, -0.5, 0.5, -0.34);
+      c.bezierCurveTo(0.56, -0.13, 0.25, 0.05, 0, 0.12);
+      c.closePath();
+      c.moveTo(0.012, 0.12); c.lineTo(0.02, 0.5); c.lineTo(-0.01, 0.5); c.lineTo(-0.012, 0.12);
+    } else if (f.kind === 'maple') {
+      const lobes = [[-Math.PI / 2, 0.5], [-Math.PI / 2 - 0.85, 0.44], [-Math.PI / 2 + 0.85, 0.44], [-Math.PI / 2 - 1.75, 0.3], [-Math.PI / 2 + 1.75, 0.3]];
+      for (let i = 0; i <= 120; i++) {
+        const th = -Math.PI + (i / 120) * 2 * Math.PI;
+        let r = 0.12;
+        for (const [a, L] of lobes) {
+          const d = Math.atan2(Math.sin(th - a), Math.cos(th - a));
+          r = Math.max(r, L * Math.pow(Math.max(0, Math.cos(d * 1.9)), 3.5));
+        }
+        r *= 1 + 0.07 * Math.sin(th * 34);
+        const x = Math.cos(th) * r, y = Math.sin(th) * r;
+        if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+      }
+      c.closePath();
+      c.moveTo(0.012, 0.1); c.lineTo(0.03, 0.42); c.lineTo(0.005, 0.42); c.lineTo(-0.012, 0.1);
+    } else if (f.kind === 'petal') {
+      c.moveTo(0, 0.5);
+      c.bezierCurveTo(-0.46, 0.25, -0.42, -0.35, -0.13, -0.5);
+      c.lineTo(0, -0.38);
+      c.lineTo(0.13, -0.5);
+      c.bezierCurveTo(0.42, -0.35, 0.46, 0.25, 0, 0.5);
+      c.closePath();
+    } else {
+      for (let i = 0; i < 6; i++) {
+        const a = i * Math.PI / 3;
+        const ca = Math.cos(a), sa = Math.sin(a);
+        c.moveTo(0, 0); c.lineTo(ca * 0.5, sa * 0.5);
+        for (const t of [0.25, 0.38]) {
+          const bx = ca * t, by = sa * t;
+          c.moveTo(bx, by); c.lineTo(bx + Math.cos(a + 0.7) * 0.12, by + Math.sin(a + 0.7) * 0.12);
+          c.moveTo(bx, by); c.lineTo(bx + Math.cos(a - 0.7) * 0.12, by + Math.sin(a - 0.7) * 0.12);
+        }
+      }
+    }
+  }
+  function leafVeins(f) {
+    const c = lctx;
+    c.beginPath();
+    if (f.kind === 'ginkgo') {
+      for (let i = -4; i <= 4; i++) { c.moveTo(0, 0.1); c.lineTo(i * 0.11, -0.4 + Math.abs(i) * 0.012); }
+    } else if (f.kind === 'maple') {
+      for (const a of [-Math.PI / 2, -Math.PI / 2 - 0.85, -Math.PI / 2 + 0.85, -Math.PI / 2 - 1.75, -Math.PI / 2 + 1.75]) {
+        c.moveTo(0, 0.04); c.lineTo(Math.cos(a) * 0.4, Math.sin(a) * 0.4);
+      }
+    } else if (f.kind === 'petal') {
+      c.moveTo(0, 0.45); c.lineTo(0, 0.05);
+    }
+    c.stroke();
+  }
+
+  // ---------- lift the print ----------
+  let lifted = false, liftAmt = 0, prints = 0;
+  const liftBtn = $('lift'), caption = $('caption');
+  liftBtn.addEventListener('click', () => {
+    lifted = !lifted;
+    document.body.classList.toggle('lifted', lifted);
+    liftBtn.innerHTML = lifted ? 'Return<span class="long"> to water</span>' : 'Lift<span class="long"> the print</span>';
+    liftBtn.setAttribute('aria-pressed', String(lifted));
+    canvas.setAttribute('aria-label', lifted ? 'A marbled print lifted from the water.' : 'A marbling tank of water. Touch it to drop colour.');
+    if (lifted) {
+      takeOver();
+      prints++;
+      caption.textContent = printTitle(prints);
+      for (const s of pointers.values()) if (s.src) s.src.held = false;
+      pointers.clear();
+      setLore(LORE.lift);
+      sound.lift();
+      onLift(caption.textContent);
+    } else {
+      caption.textContent = '';
+      markInput();
+    }
+  });
+  function clock() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+  function printTitle(n) {
+    const top = [...usage.pigs.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([id]) => LIB[id].name);
+    const pigs = top.length === 0 ? 'Floating ink' : top.length === 1 ? top[0] : `${top[0]} and ${top[1].toLowerCase()}`;
+    const T = usage.tools;
+    let kind = 'on still water';
+    if (usage.recipe) kind = usage.recipe.toLowerCase();
+    else if (T.has('comb')) kind = 'combed pattern';
+    else if (T.has('stylus')) kind = 'drawn lines';
+    else if (T.has('clear')) kind = 'rings';
+    else if (T.has('breath')) kind = 'breath pattern';
+    else if (T.has('camera')) kind = 'moving figure';
+    else if (T.has('drop')) kind = 'stones';
+    else if (T.has('brush')) kind = 'brushwork';
+    const name = `${pigs} ${kind}`.replace(/^(\w)/, c => c.toUpperCase());
+    return `Print ${n}: ${name}, pulled ${clock()}`;
+  }
+  // ---------- the drying line ----------
+  let pendingPrint = null;
+  const lineEl = $('line');
+  const viewer = $('viewer'), viewCanvas = $('viewCanvas'), viewCaption = $('viewCaption');
+  function onLift(title) { pendingPrint = { title }; }
+  function afterRender() {
+    if (!pendingPrint || liftAmt < 0.985) return;
+    const { title } = pendingPrint;
+    pendingPrint = null;
+    const sc = Math.min(1, 1400 / Math.max(canvas.width, canvas.height));
+    const big = document.createElement('canvas');
+    big.width = Math.round(canvas.width * sc); big.height = Math.round(canvas.height * sc);
+    big.getContext('2d').drawImage(canvas, 0, 0, big.width, big.height);
+    const th = document.createElement('canvas');
+    th.width = 160; th.height = Math.round(160 * canvas.height / canvas.width);
+    th.getContext('2d').drawImage(big, 0, 0, th.width, th.height);
+    th.setAttribute('aria-hidden', 'true');
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'print';
+    b.title = title;
+    b.setAttribute('aria-label', `${title}. Open the print.`);
+    b.appendChild(th);
+    b.addEventListener('click', () => openPrint(big, title));
+    li.appendChild(b);
+    lineEl.appendChild(li);
+    while (lineEl.children.length > 8) lineEl.removeChild(lineEl.firstChild);
+    lineEl.hidden = false;
+    placeLine();
+    say('Pinned to the drying line.', 2500);
+  }
+  function openPrint(big, title) {
+    viewCanvas.width = big.width; viewCanvas.height = big.height;
+    viewCanvas.getContext('2d').drawImage(big, 0, 0);
+    viewCanvas.setAttribute('aria-label', title);
+    viewCaption.textContent = title;
+    if (viewer.showModal) viewer.showModal(); else viewer.setAttribute('open', '');
+    $('viewClose').focus();
+  }
+  $('viewClose').addEventListener('click', () => { if (viewer.close) viewer.close(); else viewer.removeAttribute('open'); });
+  viewer.addEventListener('click', e => { if (e.target === viewer && viewer.close) viewer.close(); });
+  // on narrow screens the line hangs just under the title block
+  function placeLine() {
+    if (lineEl.hidden) return;
+    if (window.innerWidth <= 760) {
+      lineEl.style.top = Math.round($('intro').getBoundingClientRect().bottom + 12) + 'px';
+    } else lineEl.style.top = '';
+  }
+
+  // ---------- sound (only after a gesture, off by default) ----------
+  const sound = (() => {
+    let ctx = null, master = null, lp = null, pluckBus = null, on = false, lastPluck = 0, activity = 0;
+    const SCALE = [293.66, 329.63, 392.0, 440.0, 493.88, 587.33, 659.25, 783.99];
+    function build() {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      ctx = new AC();
+      master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
+      lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 320; lp.Q.value = 0.8; lp.connect(master);
+      [[55, 'sine', 0.22], [82.6, 'sine', 0.12], [110.4, 'triangle', 0.045], [164.9, 'sine', 0.02]].forEach(([f, type, g]) => {
+        const o = ctx.createOscillator(); o.type = type; o.frequency.value = f;
+        const gn = ctx.createGain(); gn.gain.value = g;
+        const wob = ctx.createOscillator(); wob.frequency.value = 0.05 + Math.random() * 0.08;
+        const wg = ctx.createGain(); wg.gain.value = f * 0.004;
+        wob.connect(wg); wg.connect(o.frequency); wob.start();
+        o.connect(gn); gn.connect(lp); o.start();
+      });
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.06;
+      const lg = ctx.createGain(); lg.gain.value = 90;
+      lfo.connect(lg); lg.connect(lp.frequency); lfo.start();
+      const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const ch = buf.getChannelData(0);
+      let b = 0;
+      for (let i = 0; i < ch.length; i++) { b = 0.97 * b + 0.03 * (Math.random() * 2 - 1); ch[i] = b * 3; }
+      const ns = ctx.createBufferSource(); ns.buffer = buf; ns.loop = true;
+      const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 420; nf.Q.value = 0.5;
+      const ng = ctx.createGain(); ng.gain.value = 0.05;
+      ns.connect(nf); nf.connect(ng); ng.connect(master); ns.start();
+      pluckBus = ctx.createGain(); pluckBus.gain.value = 1; pluckBus.connect(master);
+      const dl = ctx.createDelay(1); dl.delayTime.value = 0.31;
+      const fb = ctx.createGain(); fb.gain.value = 0.38;
+      const df = ctx.createBiquadFilter(); df.type = 'lowpass'; df.frequency.value = 1600;
+      pluckBus.connect(dl); dl.connect(df); df.connect(fb); fb.connect(dl); df.connect(master);
+      return true;
+    }
+    function toggle() {
+      if (!ctx && !build()) return null;
+      on = !on;
+      const t = ctx.currentTime;
+      master.gain.cancelScheduledValues(t);
+      master.gain.setValueAtTime(master.gain.value, t);
+      if (on) { ctx.resume(); master.gain.linearRampToValueAtTime(0.8, t + 1.8); }
+      else master.gain.linearRampToValueAtTime(0, t + 0.6);
+      return on;
+    }
+    function pluck(intensity = 0.6, pitchBias = 0) {
+      if (!on || !ctx) return;
+      const now = ctx.currentTime;
+      if (now - lastPluck < 0.075) return;
+      lastPluck = now;
+      const idx = Math.max(0, Math.min(SCALE.length - 1, ((Math.random() * SCALE.length) | 0) + pitchBias));
+      const f = SCALE[idx] * (Math.random() < 0.3 ? 0.5 : 1);
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(f * 0.72, now);
+      o.frequency.exponentialRampToValueAtTime(f * 1.18, now + 0.08 + Math.random() * 0.05);
+      const g = ctx.createGain();
+      const peak = 0.03 + 0.09 * Math.min(1, intensity);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(peak, now + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+      const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+      o.connect(g);
+      if (pan) { pan.pan.value = Math.random() * 1.2 - 0.6; g.connect(pan); pan.connect(pluckBus); } else g.connect(pluckBus);
+      o.start(now); o.stop(now + 0.36);
+    }
+    function stir(amount) { activity = Math.min(1, activity + amount); }
+    function tick(dt) {
+      activity *= Math.exp(-dt * 1.4);
+      if (!on || !ctx) return;
+      lp.frequency.setTargetAtTime(280 + activity * 900, ctx.currentTime, 0.25);
+      if (Math.random() < activity * dt * 7) pluck(activity, 2);
+    }
+    function lift() {
+      if (!on || !ctx) return;
+      [0, 0.09, 0.2].forEach((d, i) => setTimeout(() => { lastPluck = 0; pluck(0.5, -i); }, d * 1000));
+    }
+    return { toggle, pluck, stir, tick, lift };
+  })();
+  const soundBtn = $('sound');
+  soundBtn.addEventListener('click', () => {
+    const on = sound.toggle();
+    if (on === null) { say("Sound isn't available in this browser.", 4000); return; }
+    soundBtn.setAttribute('aria-pressed', String(on));
+  });
+
+  function clearTank() {
+    clearing = 0.9;
+    sources.length = 0;
+    hands.length = 0;
+    for (const e of emitters) e.ink = 0;
+    nextDrop = simT + 9;
+    usage = { pigs: new Map(), tools: new Set(), recipe: null };
+  }
+  $('clear').addEventListener('click', () => { takeOver(); clearTank(); markInput(); });
+
+  // ---------- render ----------
+  function render(t) {
+    P.display.bind()
+      .f('texelSize', dye.tx, dye.ty)
+      .f('dyeTexel', dye.tx, dye.ty)
+      .f('res', canvas.width, canvas.height)
+      .f('time', reduced ? t * 0.4 : t)
+      .f('paper', mood.paper[0], mood.paper[1], mood.paper[2])
+      .f('ghostAmt', ghostAmt)
+      .f('lift', liftAmt)
+      .f('dpr', dprNow)
+      .f('causAmt', mood.caus)
+      .f('lampAmt', mood.lamp)
+      .f('lampCol', lampLin[0], lampLin[1], lampLin[2])
+      .f('lampPos', 0.28, 0.78)
+      .f('sheet', sheetLin[0], sheetLin[1], sheetLin[2])
+      .f('table', tableLin[0], tableLin[1], tableLin[2])
+      .i('uDye', dye.read.attach(0))
+      .i('uGhost', bindGhost(1));
+    blit(null);
+  }
+
+  // ---------- start ----------
+  chooseTool('drop', false);
+  applyMood('still', false);
+  const moodSel = $('mood');
+  moodSel.addEventListener('change', () => applyMood(moodSel.value, true));
+  const lifeBtn = $('lifeBtn');
+  lifeBtn.addEventListener('click', () => {
+    lifeOn = !lifeOn;
+    lifeBtn.setAttribute('aria-pressed', String(lifeOn));
+    markInput();
+  });
+  setLore(LORE.start);
+  resize();
+  window.addEventListener('resize', resize);
+
+  function update(dt) {
+    runTimers();
+    readCamera();
+    applyInput(dt);
+    applyCamera();
+    updateHands(dt);
+    updateLife(dt);
+    blendMood(dt);
+    ambient(dt, simT);
+    updateSettle(dt);
+    updateSources(dt);
+    step(dt);
+  }
+
+  // Warm-up: a few rounds of suminagashi so the first frame already holds rings.
+  {
+    const A = { x: 0.36, y: 0.58 }, B = { x: 0.66, y: 0.44 };
+    const seq = [
+      [0.0, 'ink', A, LIB.sumi, 1.1], [0.45, 'clear', A, null, 0.8], [0.8, 'ink', A, LIB.sumi, 0.8],
+      [1.15, 'clear', A, null, 0.6], [1.45, 'ink', A, pigment, 0.6], [1.75, 'clear', A, null, 0.5],
+      [0.2, 'ink', B, LIB.indigo, 0.9], [0.65, 'clear', B, null, 0.7], [1.0, 'ink', B, pigment, 0.6],
+    ];
+    for (const [at, kind, p, pig, size] of seq) after(at, () => addSource({ kind, x: p.x, y: p.y, pig, size }));
+    after(2.1, () => handStroke('stylus', 0.18, 0.66, 0.82, 0.38, 0.9));
+    nextDrop = 5;
+    stillWater(3.2);
+    for (let i = 0; i < 180; i++) { simT += 1 / 60; update(1 / 60); }
+    stillWater(0);
+    settleHold = 0;
+  }
+
+  const deep = /pattern=(\w+)/.exec(location.hash || '');
+  if (deep && RECIPES[deep[1]]) playRecipe(deep[1]);
+
+  let last = performance.now();
+  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); say('The water paused. Reload the page to continue.', 0); }, false);
+  function frame(now) {
+    const dt = Math.max(0, Math.min((now - last) / 1000, 1 / 30));
+    last = now;
+    resize();
+    const sdt = dt * (reduced ? 0.75 : 1);
+    if (clearing > 0) clearing -= dt;
+    liftAmt += ((lifted ? 1 : 0) - liftAmt) * Math.min(1, dt * (reduced ? 20 : 2.4));
+    ghostAmt += ((ghostOn && cam.on && !lifted ? 1 : 0) - ghostAmt) * Math.min(1, dt * 3);
+    sound.tick(dt);
+    if (!lifted) {
+      simT += sdt;
+      update(sdt);
+    } else {
+      cameraMoves.length = 0;
+    }
+    render(simT);
+    afterRender();
+    drawOverlay();
+    requestAnimationFrame(frame);
+  }
+  render(simT);
+  requestAnimationFrame(frame);
+})();
+</script>
