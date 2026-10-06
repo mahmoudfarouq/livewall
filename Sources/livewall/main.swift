@@ -2,9 +2,15 @@ import Foundation
 
 enum CLI {
     static func set(_ args: [String]) {
-        let (flags, positional) = parseFlags(args, valued: ["--key", "--screen", "--fps"],
-                                             boolean: ["--wallpaper-hash", "--no-wallpaper-hash"])
-        guard positional.count == 1 else { fail("set needs exactly one path or URL (see livewall --help)") }
+        let (flags, given) = parseFlags(args, valued: ["--key", "--screen", "--fps"],
+                                             boolean: ["--wallpaper-hash", "--no-wallpaper-hash", "--random"])
+        var positional = given
+        if flags["--random"] != nil {
+            guard positional.isEmpty else { fail("--random takes no path or URL") }
+            guard let pick = Presets.all().randomElement() else { fail("no presets to pick from") }
+            positional = [pick.slug]
+        }
+        guard positional.count == 1 else { fail("set needs exactly one preset, path or URL (see livewall --help)") }
         let key = flags["--key"] ?? "option"
         guard Wallpaper.modifierFlags[key] != nil else { fail("--key must be option, control, command or fn") }
         let screen = flags["--screen"] ?? "all"
@@ -51,7 +57,9 @@ enum CLI {
     livewall: an HTML page or URL as your live desktop wallpaper.
 
     usage:
-      livewall set <path-or-url> [options]   show a page on the desktop (replaces any running one)
+      livewall set <preset|path|url> [opts]  show a page on the desktop (replaces any running one)
+      livewall set --random [opts]           show a random preset
+      livewall presets                       list presets (alias: list)
       livewall stop                          remove it
       livewall status                        show what is running
       livewall reload                        reload the page(s)
@@ -64,6 +72,8 @@ enum CLI {
       --wallpaper-hash                  append #wallpaper to local files (default)
       --no-wallpaper-hash               load local files without it
 
+    Presets are <slug>.html files, searched in $LIVEWALL_PRESETS, ~/.local/share/livewall/presets,
+    then presets/ in the repo when run from its .build folder.
     Files live in ~/Library/Application Support/livewall/ (state.json, livewall.pid, livewall.log).
     """
     /// Turns a path or URL into the URL the daemon loads.
@@ -74,10 +84,13 @@ enum CLI {
         } else {
             url = URL(fileURLWithPath: (input as NSString).expandingTildeInPath).standardizedFileURL
             var isDir: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else {
-                fail("no such file: \(url.path)")
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) {
+                if isDir.boolValue { url.appendPathComponent("index.html") }
+            } else if !input.contains("/"), let preset = Presets.find(input) {
+                url = preset
+            } else {
+                fail("no such file or preset: \(input) (see livewall presets)")
             }
-            if isDir.boolValue { url.appendPathComponent("index.html") }
         }
         guard var c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { fail("bad url \(input)") }
         if let fps { c.queryItems = (c.queryItems ?? []) + [URLQueryItem(name: "fps", value: String(fps))] }
@@ -131,6 +144,7 @@ let args = Array(CommandLine.arguments.dropFirst())
 switch args.first {
 case "set": CLI.set(Array(args.dropFirst()))
 case "stop": CLI.stop()
+case "presets", "list": Presets.list()
 case "status": CLI.status()
 case "reload": CLI.reload()
 case "daemon": Daemon.run(Array(args.dropFirst())) // hidden: what `set` re-execs
