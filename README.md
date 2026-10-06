@@ -129,3 +129,7 @@ presets in this order, and the first match wins:
   their wallpaper mode light.
 - If focus doesn't come back to the app you were in after release, click it once. macOS 14+
   can refuse activation requests from background apps.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
