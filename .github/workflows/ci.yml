@@ -48,6 +48,13 @@ jobs:
           test "$("$RUNNER_TEMP/prefix/bin/livewall" presets | wc -l)" -eq "$(ls presets/*.html | wc -l)"
           test "$(ls "$RUNNER_TEMP/prefix/share/livewall/presets" | wc -l)" -eq "$(ls presets/*.html | wc -l)"
 
+      - name: One-line install from the latest release
+        working-directory: ${{ runner.temp }}
+        run: |
+          PREFIX="$RUNNER_TEMP/piped" sh < "$GITHUB_WORKSPACE/scripts/install.sh"
+          "$RUNNER_TEMP/piped/bin/livewall" --version
+          test "$("$RUNNER_TEMP/piped/bin/livewall" presets | wc -l)" -gt 0
+
   presets:
     name: Check presets
     runs-on: ubuntu-latest

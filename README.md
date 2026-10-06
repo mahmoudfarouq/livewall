@@ -14,20 +14,27 @@ livewall set night-city
 
 ## Install
 
-### From a release (no Swift needed)
+### One line (no Swift needed)
 
 ```sh
-curl -fsSL https://github.com/mahmoudfarouq/livewall/releases/latest/download/livewall-macos-universal.tar.gz | tar -xz
-cd livewall && sh scripts/install.sh
+curl -fsSL https://raw.githubusercontent.com/mahmoudfarouq/livewall/main/scripts/install.sh | sh
 ```
 
-Each [release](https://github.com/mahmoudfarouq/livewall/releases) has a universal binary
-(Apple silicon and Intel) with the presets, and a `.sha256` checksum. The installer copies the
-binary to `~/.local/bin/livewall` and the presets to `~/.local/share/livewall/presets`, for
-your user only (no sudo). Make sure `~/.local/bin` is on your `PATH`.
+This downloads the latest [release](https://github.com/mahmoudfarouq/livewall/releases), a
+universal binary (Apple silicon and Intel) with the presets, and installs the binary to
+`~/.local/bin/livewall` and the presets to `~/.local/share/livewall/presets`, for your user
+only (no sudo). Make sure `~/.local/bin` is on your `PATH`. Set `PREFIX` to install somewhere
+else, e.g. `curl … | PREFIX=/opt/livewall sh`.
 
-The binary isn't notarized. If you download the archive with a browser, macOS quarantines it;
-the installer clears that flag on the installed copy.
+To update, run the same command again. To uninstall:
+
+```sh
+rm -f ~/.local/bin/livewall && rm -rf ~/.local/share/livewall
+```
+
+The binary isn't notarized. If you download a release archive with a browser instead, macOS
+quarantines it; the installer clears that flag on the installed copy. Each release also has a
+`.sha256` checksum for the archive.
 
 ### From source
 
