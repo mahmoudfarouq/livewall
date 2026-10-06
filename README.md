@@ -104,6 +104,7 @@ closing the terminal does not kill it. It keeps `state.json`, `livewall.pid` and
 | `orrery` | Clockwork Orrery |
 | `pocket-universe` | Pocket Universe |
 | `sand-garden` | Sand Garden |
+| `tawaf` | Tawaf |
 | `tide-pool` | Tide Pool |
 | `weather-jar` | Weather in a Jar |
 | `word-creatures` | Living Type Specimen |
