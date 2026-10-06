@@ -1,0 +1,1355 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Clockwork Orrery</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=IM+Fell+English:ital@0;1&display=swap');
+:root {
+  color-scheme: dark;
+  --ebony: #110c08;
+  --ebony-2: #1c130c;
+  --wood: #2c1d11;
+  --brass: #c49a45;
+  --brass-hi: #f2d896;
+  --brass-lo: #6a4a1b;
+  --gilt: #e8bf5a;
+  --ivory: #ece2c8;
+  --ivory-dim: #b5a688;
+  --ink: #2a1a08;
+  --steel: #22325c;
+  --steel-hi: #8aa3d6;
+  --panel: rgba(18, 12, 7, 0.78);
+  --line: rgba(196, 154, 69, 0.38);
+  --focus: #f6df9c;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--ebony);
+  color: var(--ivory);
+  font-family: 'EB Garamond', Georgia, 'Times New Roman', serif;
+  font-size: 17px;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+#c {
+  position: fixed; inset: 0; width: 100%; height: 100%;
+  display: block; touch-action: none; cursor: grab; outline: none;
+}
+#c.dragging { cursor: grabbing; }
+#c:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
+.mast {
+  position: fixed; top: max(14px, env(safe-area-inset-top)); left: max(18px, env(safe-area-inset-left));
+  pointer-events: none; max-width: min(320px, 70vw);
+}
+.mast h1 {
+  margin: 0; font-family: 'IM Fell English', Georgia, serif; font-weight: 400;
+  font-size: 30px; line-height: 1; color: var(--brass-hi); letter-spacing: 0.01em;
+}
+.mast p { margin: 6px 0 0; color: var(--ivory-dim); font-size: 15px; line-height: 1.3; transition: opacity 1.2s; }
+.mast p.gone { opacity: 0; }
+.bar {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  padding: 12px max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px;
+  background: linear-gradient(to top, rgba(12, 8, 5, 0.94) 55%, rgba(12, 8, 5, 0));
+}
+.when { flex: 1 1 260px; min-width: 0; }
+.date {
+  font-size: 30px; line-height: 1.05; color: var(--ivory);
+  font-variant-numeric: tabular-nums lining-nums; font-feature-settings: "tnum" 1, "lnum" 1;
+  white-space: nowrap;
+}
+.sub { color: var(--ivory-dim); font-size: 15px; margin-top: 2px; font-variant-numeric: tabular-nums lining-nums; }
+.group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+button, select, input[type=date] {
+  font: inherit; font-size: 16px; color: var(--ivory);
+  background: rgba(255, 240, 210, 0.04);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 12px; min-height: 38px; line-height: 1.1;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+button { cursor: pointer; }
+button:hover, select:hover, input[type=date]:hover { border-color: var(--brass); background: rgba(255, 230, 170, 0.08); }
+button[aria-pressed="true"] { border-color: var(--brass-hi); color: var(--brass-hi); }
+select { padding-right: 8px; }
+select option { background: #1c130c; color: var(--ivory); }
+input[type=date] { color-scheme: dark; min-width: 0; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+#toast {
+  position: fixed; left: 50%; top: max(16px, env(safe-area-inset-top));
+  transform: translate(-50%, -6px); max-width: min(560px, calc(100vw - 32px));
+  padding: 9px 18px 10px; border-radius: 6px; text-align: center;
+  background: var(--panel); border: 1px solid var(--line);
+  font-size: 18px; line-height: 1.3; color: var(--ivory);
+  font-variant-numeric: tabular-nums lining-nums;
+  opacity: 0; pointer-events: none; transition: opacity 0.6s, transform 0.6s;
+}
+#toast.on { opacity: 1; transform: translate(-50%, 0); }
+#toast small { display: block; color: var(--ivory-dim); font-size: 14px; margin-top: 2px; }
+#card {
+  position: fixed; right: max(16px, env(safe-area-inset-right)); top: max(70px, calc(env(safe-area-inset-top) + 56px));
+  width: min(300px, calc(100vw - 32px)); padding: 14px 16px 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+#card h2 { margin: 0 0 6px; font-family: 'IM Fell English', Georgia, serif; font-weight: 400; font-size: 26px; color: var(--brass-hi); }
+#card p { margin: 3px 0; font-size: 16px; line-height: 1.35; }
+#card p.quiet { color: var(--ivory-dim); font-size: 15px; }
+#card button { margin-top: 8px; min-height: 32px; padding: 4px 12px; }
+body.wallpaper .mast, body.wallpaper .bar, body.wallpaper #toast, body.wallpaper #card { display: none !important; }
+body.wallpaper #c { cursor: default; }
+@media (max-width: 640px) {
+  .mast h1 { font-size: 24px; }
+  .mast p { font-size: 14px; }
+  .date { font-size: 24px; }
+  .bar { gap: 8px 12px; }
+  .when { flex-basis: 100%; }
+  button, select, input[type=date] { font-size: 15px; padding: 5px 9px; }
+  #card { top: auto; bottom: 168px; right: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #toast { transition: opacity 0.4s; transform: translate(-50%, 0); }
+  .mast p { transition: none; }
+}
+</style>
+
+<canvas id="c" tabindex="0" aria-label="A brass orrery. Drag around the Sun to move the Earth through the year, or drag the crank. Arrow keys step time, numbers 1 to 8 name the planets."></canvas>
+<header class="mast">
+  <h1>Orrery</h1>
+  <p id="hint">Turn the crank, or drag the Earth around the Sun. Click a planet to learn its orbit.</p>
+</header>
+<div id="toast" role="status" aria-live="polite"></div>
+<aside id="card" hidden aria-live="polite">
+  <h2 id="cardName"></h2>
+  <p id="cardDist"></p>
+  <p id="cardPeriod"></p>
+  <p id="cardTrain" class="quiet"></p>
+  <button id="cardClose" type="button">Close</button>
+</aside>
+<footer class="bar">
+  <div class="when">
+    <div id="date" class="date"></div>
+    <div id="sub" class="sub"></div>
+  </div>
+  <div class="group">
+    <button id="play" type="button">Pause</button>
+    <label class="sr" for="rate">Speed</label>
+    <select id="rate">
+      <option value="1">A day a second</option>
+      <option value="7">A week a second</option>
+      <option value="30.436875">A month a second</option>
+      <option value="365.2425">A year a second</option>
+      <option value="3652.425">A decade a second</option>
+      <option value="36524.25">A century a second</option>
+    </select>
+    <button id="today" type="button">Today</button>
+  </div>
+  <div class="group">
+    <button id="prev" type="button">Previous alignment</button>
+    <button id="next" type="button">Next alignment</button>
+    <label class="sr" for="when">Go to date</label>
+    <input type="date" id="when" min="0001-01-01" max="3000-12-31">
+    <button id="sound" type="button" aria-pressed="false">Sound off</button>
+  </div>
+</footer>
+
+<script>
+/*ASTRO-BEGIN*/
+const Astro = (() => {
+  const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+  const norm360 = d => ((d % 360) + 360) % 360;
+  const wrap180 = d => { d = norm360(d); return d > 180 ? d - 360 : d; };
+
+  // JPL "Approximate Positions of the Planets", Table 2a/2b (valid 3000 BC to 3000 AD).
+  // [a, e, I, L, varpi, Omega] and per-century rates; extra terms b, c, s, f for the outer planets.
+  const EL = {
+    mercury: [[0.38709843, 0.20563661, 7.00559432, 252.25166724, 77.45771895, 48.33961819],
+              [0, 0.00002123, -0.00590158, 149472.67486623, 0.15940013, -0.12214182]],
+    venus:   [[0.72332102, 0.00676399, 3.39777545, 181.97970850, 131.76755713, 76.67261496],
+              [-0.00000026, -0.00005107, 0.00043494, 58517.81560260, 0.05679648, -0.27274174]],
+    earth:   [[1.00000018, 0.01673163, -0.00054346, 100.46691572, 102.93005885, -5.11260389],
+              [-0.00000003, -0.00003661, -0.01337178, 35999.37306329, 0.31795260, -0.24123856]],
+    mars:    [[1.52371243, 0.09336511, 1.85181869, -4.56813164, -23.91744784, 49.71320984],
+              [0.00000097, 0.00009149, -0.00724757, 19140.29934243, 0.45223625, -0.26852431]],
+    jupiter: [[5.20248019, 0.04853590, 1.29861416, 34.33479152, 14.27495244, 100.29282654],
+              [-0.00002864, 0.00018026, -0.00322699, 3034.90371757, 0.18199196, 0.13024619],
+              [-0.00012452, 0.06064060, -0.35635438, 38.35125000]],
+    saturn:  [[9.54149883, 0.05550825, 2.49424102, 50.07571329, 92.86136063, 113.63998702],
+              [-0.00003065, -0.00032044, 0.00451969, 1222.11494724, 0.54179478, -0.25015002],
+              [0.00025899, -0.13434469, 0.87320147, 38.35125000]],
+    uranus:  [[19.18797948, 0.04685740, 0.77298127, 314.20276625, 172.43404441, 73.96250215],
+              [-0.00020455, -0.00001550, -0.00180155, 428.49512595, 0.09266985, 0.05739699],
+              [0.00058331, -0.97731848, 0.17689245, 7.67025000]],
+    neptune: [[30.06952752, 0.00895439, 1.77005520, 304.22289287, 46.68158724, 131.78635853],
+              [0.00006447, 0.00000818, 0.00022400, 218.46515314, 0.01009938, -0.00606302],
+              [-0.00041348, 0.68346318, -0.10162547, 7.67025000]]
+  };
+  // Table 1 (valid 1800 to 2050), used inside its range for the inner planets.
+  const EL1 = {
+    mercury: [[0.38709927, 0.20563593, 7.00497902, 252.25032350, 77.45779628, 48.33076593],
+              [0.00000037, 0.00001906, -0.00594749, 149472.67411175, 0.16047689, -0.12534081]],
+    venus:   [[0.72333566, 0.00677672, 3.39467605, 181.97909950, 131.60246718, 76.67984255],
+              [0.00000390, -0.00004107, -0.00078890, 58517.81538729, 0.00268329, -0.27769418]],
+    earth:   [[1.00000261, 0.01671123, -0.00001531, 100.46457166, 102.93768193, 0.0],
+              [0.00000562, -0.00004392, -0.01294668, 35999.37244981, 0.32327364, 0.0]],
+    mars:    [[1.52371034, 0.09339410, 1.84969142, -4.55343205, -23.94362959, 49.55953891],
+              [0.00001847, 0.00007882, -0.00813131, 19140.30268499, 0.44441088, -0.29257343]],
+    jupiter: [[5.20288700, 0.04838624, 1.30439695, 34.39644051, 14.72847983, 100.47390909],
+              [-0.00011607, -0.00013253, -0.00183714, 3034.74612775, 0.21252668, 0.20469106]],
+    saturn:  [[9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448],
+              [-0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794]],
+    uranus:  [[19.18916464, 0.04725744, 0.77263783, 313.23810451, 170.95427630, 74.01692503],
+              [-0.00196176, -0.00004397, -0.00242939, 428.48202785, 0.40805281, 0.04240589]],
+    neptune: [[30.06992276, 0.00859048, 1.77004347, -55.12002969, 44.96476227, 131.78422574],
+              [0.00026291, 0.00005105, 0.00035372, 218.45945325, -0.32241464, -0.00508664]]
+  };
+  const NAMES = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
+
+  // Short-period mutual perturbations of Jupiter, Saturn and Uranus in longitude (degrees), after
+  // P. Schlyter's tables; the long great inequality is already carried by the Table 2b terms.
+  function perturb(name, jd) {
+    if (name !== 'jupiter' && name !== 'saturn' && name !== 'uranus') return 0;
+    const d = jd - 2451543.5, s = x => Math.sin(x * D2R), c = x => Math.cos(x * D2R);
+    const Mj = 19.8950 + 0.0830853001 * d, Ms = 316.9670 + 0.0334442282 * d, Mu = 142.5905 + 0.011725806 * d;
+    if (name === 'jupiter') return -0.056 * s(2 * Mj - 2 * Ms + 21) + 0.042 * s(3 * Mj - 5 * Ms + 21) - 0.036 * s(Mj - 2 * Ms)
+      + 0.022 * c(Mj - Ms) + 0.023 * s(2 * Mj - 3 * Ms + 52) - 0.016 * s(Mj - 5 * Ms - 69);
+    if (name === 'saturn') return -0.229 * c(2 * Mj - 4 * Ms - 2) + 0.119 * s(Mj - 2 * Ms - 3) + 0.046 * s(2 * Mj - 6 * Ms - 69) + 0.014 * s(Mj - 3 * Ms + 32);
+    return 0.040 * s(Ms - 2 * Mu + 6) + 0.035 * s(Ms - 3 * Mu + 33) - 0.015 * s(Mj - Mu + 20);
+  }
+
+  function helio(name, jd) {
+    const T = (jd - 2451545.0) / 36525;
+    const [k, r, x] = (T > -2 && T < 0.5 && EL1[name][0][0] < 2 ? EL1 : EL)[name];
+    const a = k[0] + r[0] * T, e = k[1] + r[1] * T, I = (k[2] + r[2] * T) * D2R;
+    const L = k[3] + r[3] * T, wb = k[4] + r[4] * T, Om = (k[5] + r[5] * T) * D2R;
+    let M = L - wb;
+    if (x) M += x[0] * T * T + x[1] * Math.cos(x[3] * T * D2R) + x[2] * Math.sin(x[3] * T * D2R);
+    M = wrap180(M) * D2R;
+    const w = wb * D2R - Om;
+    let E = M + e * Math.sin(M);
+    for (let i = 0; i < 12; i++) {
+      const dE = (M - (E - e * Math.sin(E))) / (1 - e * Math.cos(E));
+      E += dE; if (Math.abs(dE) < 1e-12) break;
+    }
+    const xp = a * (Math.cos(E) - e), yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
+    const cw = Math.cos(w), sw = Math.sin(w), cO = Math.cos(Om), sO = Math.sin(Om), cI = Math.cos(I), sI = Math.sin(I);
+    let X = (cw * cO - sw * sO * cI) * xp + (-sw * cO - cw * sO * cI) * yp;
+    let Y = (cw * sO + sw * cO * cI) * xp + (-sw * sO + cw * cO * cI) * yp;
+    const Z = (sw * sI) * xp + (cw * sI) * yp;
+    const dl = perturb(name, jd) * D2R;
+    if (dl) { const c = Math.cos(dl), s = Math.sin(dl); [X, Y] = [X * c - Y * s, X * s + Y * c]; }
+    return { x: X, y: Y, z: Z, a, e };
+  }
+  const lonOf = p => norm360(Math.atan2(p.y, p.x) * R2D);
+  const latOf = p => Math.atan2(p.z, Math.hypot(p.x, p.y)) * R2D;
+  // Sidereal period in days from the mean-longitude rate.
+  const period = name => 36525 * 360 / EL[name][1][3];
+
+  // Geocentric ecliptic longitude/latitude (J2000 frame) of a planet, or the Sun.
+  function geo(name, jd, earth) {
+    const E = earth || helio('earth', jd);
+    if (name === 'sun') return { lon: lonOf({ x: -E.x, y: -E.y }), lat: 0, d: Math.hypot(E.x, E.y, E.z) };
+    const P = helio(name, jd), g = { x: P.x - E.x, y: P.y - E.y, z: P.z - E.z };
+    return { lon: lonOf(g), lat: latOf(g), d: Math.hypot(g.x, g.y, g.z) };
+  }
+
+  // Low-precision Moon (main terms of the ELP series), longitude/latitude of date, degrees.
+  function moon(jd) {
+    const T = (jd - 2451545.0) / 36525;
+    const Lp = 218.3165 + 481267.8813 * T, D = (297.8502 + 445267.1115 * T) * D2R;
+    const M = (357.5291 + 35999.0503 * T) * D2R, Mp = (134.9634 + 477198.8676 * T) * D2R;
+    const F = (93.2721 + 483202.0175 * T) * D2R;
+    const lon = Lp + 6.289 * Math.sin(Mp) + 1.274 * Math.sin(2 * D - Mp) + 0.658 * Math.sin(2 * D)
+      + 0.214 * Math.sin(2 * Mp) - 0.186 * Math.sin(M) - 0.114 * Math.sin(2 * F)
+      - 0.059 * Math.sin(2 * D - 2 * Mp) - 0.057 * Math.sin(2 * D - M - Mp) + 0.053 * Math.sin(2 * D + Mp);
+    const lat = 5.128 * Math.sin(F) + 0.281 * Math.sin(Mp + F) + 0.278 * Math.sin(Mp - F) + 0.173 * Math.sin(2 * D - F);
+    return { lon: norm360(lon), lat, node: norm360(125.0445 - 1934.1363 * T) };
+  }
+  // Precession in longitude, J2000 -> equinox of date (degrees).
+  const precession = jd => 1.3969713 * (jd - 2451545.0) / 36525;
+
+  // Eclipses (Meeus, Astronomical Algorithms, ch. 54). k integer: new moon; k + 0.5: full moon.
+  function eclipse(k) {
+    const T = k / 1236.85, T2 = T * T, T3 = T2 * T, T4 = T3 * T;
+    const solar = Math.abs(k % 1) < 1e-9;
+    let F = 160.7108 + 390.67050284 * k - 0.0016118 * T2 - 0.00000227 * T3 + 0.000000011 * T4;
+    if (Math.abs(Math.sin(F * D2R)) > 0.36) return null;
+    let jde = 2451550.09766 + 29.530588861 * k + 0.00015437 * T2 - 0.00000015 * T3 + 0.00000000073 * T4;
+    const M = (2.5534 + 29.10535670 * k - 0.0000014 * T2 - 0.00000011 * T3) * D2R;
+    const Mp = (201.5643 + 385.81693528 * k + 0.0107582 * T2 + 0.00001238 * T3 - 0.000000058 * T4) * D2R;
+    const Om = (124.7746 - 1.56375588 * k + 0.0020672 * T2 + 0.00000215 * T3) * D2R;
+    const E = 1 - 0.002516 * T - 0.0000074 * T2;
+    const F1 = (F - 0.02665 * Math.sin(Om)) * D2R;
+    const A1 = (299.77 + 0.107408 * k - 0.009173 * T2) * D2R;
+    const s = Math.sin, c = Math.cos;
+    jde += (solar ? -0.4075 : -0.4065) * s(Mp) + (solar ? 0.1721 : 0.1727) * E * s(M)
+      + 0.0161 * s(2 * Mp) - 0.0097 * s(2 * F1) + 0.0073 * E * s(Mp - M) - 0.0050 * E * s(Mp + M)
+      - 0.0023 * s(Mp - 2 * F1) + 0.0021 * E * s(2 * M) + 0.0012 * s(Mp + 2 * F1) + 0.0006 * E * s(2 * Mp + M)
+      - 0.0004 * s(3 * Mp) - 0.0003 * E * s(M + 2 * F1) + 0.0003 * s(A1) - 0.0002 * E * s(M - 2 * F1)
+      - 0.0002 * E * s(2 * Mp - M) - 0.0002 * s(Om);
+    const P = 0.2070 * E * s(M) + 0.0024 * E * s(2 * M) - 0.0392 * s(Mp) + 0.0116 * s(2 * Mp)
+      - 0.0073 * E * s(Mp + M) + 0.0067 * E * s(Mp - M) + 0.0118 * s(2 * F1);
+    const Q = 5.2207 - 0.0048 * E * c(M) + 0.0020 * E * c(2 * M) - 0.3299 * c(Mp) - 0.0060 * E * c(Mp + M) + 0.0041 * E * c(Mp - M);
+    const W = Math.abs(c(F1));
+    const g = (P * c(F1) + Q * s(F1)) * (1 - 0.0048 * W);
+    const u = 0.0059 + 0.0046 * E * c(M) - 0.0182 * c(Mp) + 0.0004 * c(2 * Mp) - 0.0005 * c(M + Mp);
+    const ag = Math.abs(g);
+    if (solar) {
+      if (ag > 1.5433 + u) return null;
+      let kind = 'partial';
+      if (ag < 0.9972) {
+        if (u < 0) kind = 'total';
+        else if (u > 0.0047) kind = 'annular';
+        else kind = u < 0.00464 * Math.sqrt(1 - g * g) ? 'hybrid' : 'annular';
+      }
+      return { type: 'solar', kind, jd: jde, gamma: g };
+    }
+    const pen = (1.5573 + u - ag) / 0.5450, umb = (1.0128 - u - ag) / 0.5450;
+    if (pen <= 0) return null;
+    const kind = umb >= 1 ? 'total' : umb > 0 ? 'partial' : 'penumbral';
+    return { type: 'lunar', kind, jd: jde, mag: umb > 0 ? umb : pen };
+  }
+
+
+  // Notable alignments in one calendar year: eclipses, the great conjunction, close planetary pairs,
+  // oppositions of Mars and transits of Mercury and Venus. Planet scan is daily with linear refinement.
+  const TITLE = { mercury: 'Mercury', venus: 'Venus', mars: 'Mars', jupiter: 'Jupiter', saturn: 'Saturn' };
+  const SEEN = ['mercury', 'venus', 'mars', 'jupiter', 'saturn'];
+  const cap = s => s[0].toUpperCase() + s.slice(1);
+  function separation(a, b) {
+    const b1 = a.lat * D2R, b2 = b.lat * D2R, dl = (a.lon - b.lon) * D2R;
+    return Math.acos(Math.min(1, Math.sin(b1) * Math.sin(b2) + Math.cos(b1) * Math.cos(b2) * Math.cos(dl))) * R2D;
+  }
+  function yearEvents(y) {
+    const jd0 = toJD(y, 1, 1), jd1 = toJD(y + 1, 1, 1), out = [];
+    for (let k = Math.floor((jd0 - 2451550.09766) / 29.530588861) - 1; 2451550.09766 + 29.530588861 * k < jd1 + 2; k += 0.5) {
+      const e = eclipse(k);
+      if (!e || e.jd < jd0 || e.jd >= jd1) continue;
+      const pri = e.type === 'solar'
+        ? { total: 4, annular: 3, hybrid: 4, partial: 2 }[e.kind]
+        : { total: 3, partial: 2, penumbral: 1 }[e.kind];
+      out.push({
+        jd: e.jd, kind: e.type, sub: e.kind, pri,
+        title: `${cap(e.kind)} ${e.type} eclipse`,
+        detail: e.type === 'solar' ? 'The Moon passes between the Sun and the Earth.' : 'The Moon passes through the shadow of the Earth.',
+        bodies: ['sun', 'earth', 'moon'], line: 'sun'
+      });
+    }
+    const at = jd => {
+      const E = helio('earth', jd), r = { sun: geo('sun', jd, E) };
+      SEEN.forEach(n => { r[n] = geo(n, jd, E); });
+      return r;
+    };
+    let prev = at(jd0 - 1);
+    for (let jd = jd0; jd < jd1 + 1e-9; jd += 1) {
+      const cur = at(jd);
+      const cross = (f, extra) => {
+        const d0 = f(prev), d1 = f(cur);
+        if (Math.abs(d0) > 20 || Math.abs(d1) > 20 || (d0 < 0) === (d1 < 0)) return null;
+        const t = jd - 1 + d0 / (d0 - d1);
+        return t >= jd0 && t < jd1 ? t : null;
+      };
+      for (let i = 0; i < SEEN.length; i++) for (let j = i + 1; j < SEEN.length; j++) {
+        const a = SEEN[i], b = SEEN[j];
+        const t = cross(s => wrap180(s[a].lon - s[b].lon));
+        if (t === null) continue;
+        const s = at(t), sep = separation(s[a], s[b]), elong = Math.abs(wrap180(s[a].lon - s.sun.lon));
+        const great = a === 'jupiter' && b === 'saturn';
+        if (!great && (sep > 0.5 || elong < 15)) continue;
+        out.push({
+          jd: t, kind: great ? 'great' : 'pair', pri: great ? 5 : sep < 0.15 ? 3 : 2, sep,
+          title: great ? 'Great conjunction of Jupiter and Saturn' : `Close conjunction of ${TITLE[a]} and ${TITLE[b]}`,
+          detail: `${sep < 0.95 ? sep.toFixed(2) : sep.toFixed(1)}° apart as seen from the Earth.`,
+          bodies: ['earth', a, b], line: 'geo'
+        });
+      }
+      const opp = cross(s => wrap180(s.mars.lon - s.sun.lon - 180));
+      if (opp !== null) {
+        const d = at(opp).mars.d;
+        out.push({ jd: opp, kind: 'opposition', pri: d < 0.45 ? 3 : 2, title: 'Mars at opposition',
+          detail: `Sun, Earth and Mars in a line; Mars is ${d.toFixed(2)} AU from the Earth.`, bodies: ['sun', 'earth', 'mars'], line: 'sun' });
+      }
+      for (const n of ['mercury', 'venus']) {
+        const t = cross(s => wrap180(s[n].lon - s.sun.lon));
+        if (t === null) continue;
+        const s = at(t);
+        if (s[n].d > s.sun.d || Math.abs(s[n].lat) > 0.2666 / s.sun.d) continue;
+        out.push({ jd: t, kind: 'transit', pri: n === 'venus' ? 5 : 3, title: `Transit of ${TITLE[n]}`,
+          detail: `${TITLE[n]} crosses the face of the Sun.`, bodies: ['sun', n, 'earth'], line: 'sun' });
+      }
+      prev = cur;
+    }
+    return out.sort((p, q) => p.jd - q.jd);
+  }
+
+  // Proleptic Gregorian calendar <-> Julian Day (Meeus ch. 7), astronomical year numbering.
+  function toJD(y, m, d) {
+    if (m <= 2) { y -= 1; m += 12; }
+    const A = Math.floor(y / 100), B = 2 - A + Math.floor(A / 4);
+    return Math.floor(365.25 * (y + 4716)) + Math.floor(30.6001 * (m + 1)) + d + B - 1524.5;
+  }
+  function fromJD(jd) {
+    const Z = Math.floor(jd + 0.5), F = jd + 0.5 - Z;
+    const al = Math.floor((Z - 1867216.25) / 36524.25), A = Z + 1 + al - Math.floor(al / 4);
+    const B = A + 1524, C = Math.floor((B - 122.1) / 365.25), D = Math.floor(365.25 * C), E = Math.floor((B - D) / 30.6001);
+    const day = B - D - Math.floor(30.6001 * E) + F;
+    const m = E < 14 ? E - 1 : E - 13, y = m > 2 ? C - 4716 : C - 4715;
+    return { y, m, d: Math.floor(day), frac: day - Math.floor(day) };
+  }
+  const fromDate = dt => dt.getTime() / 86400000 + 2440587.5;
+
+  return { NAMES, EL, helio, geo, moon, lonOf, latOf, period, precession, eclipse, yearEvents, separation, toJD, fromJD, fromDate, norm360, wrap180 };
+})();
+/*ASTRO-END*/
+</script>
+<script>
+(() => {
+'use strict';
+const A = Astro, TAU = Math.PI * 2, D2R = Math.PI / 180;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const T = {
+  brass: css('--brass'), hi: css('--brass-hi'), lo: css('--brass-lo'), gilt: css('--gilt'),
+  ivory: css('--ivory'), ink: css('--ink'), steel: css('--steel'), steelHi: css('--steel-hi'),
+  ebony: css('--ebony'), wood: css('--wood')
+};
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const SIGNS = ['Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius', 'Capricornus', 'Aquarius', 'Pisces'];
+
+// Planet balls: orbit radius and ball size as fractions of the machine radius R; enamel/ivory colours hi, mid, low.
+const PLANETS = [
+  { id: 'mercury', name: 'Mercury', orbit: 0.29, size: 0.013, arm: 0.0085, col: ['#ece6da', '#a69d8c', '#4b453b'] },
+  { id: 'venus', name: 'Venus', orbit: 0.355, size: 0.019, arm: 0.009, col: ['#fbf3dc', '#dccb9c', '#776536'] },
+  { id: 'earth', name: 'Earth', orbit: 0.43, size: 0.02, arm: 0.0095, col: ['#a9cdf0', '#2f62a3', '#0e2148'] },
+  { id: 'mars', name: 'Mars', orbit: 0.5, size: 0.015, arm: 0.0095, col: ['#f4ad90', '#b0452c', '#46140a'] },
+  { id: 'jupiter', name: 'Jupiter', orbit: 0.575, size: 0.034, arm: 0.011, col: ['#f6e8ca', '#cfa26b', '#5c3b1a'] },
+  { id: 'saturn', name: 'Saturn', orbit: 0.645, size: 0.028, arm: 0.011, col: ['#f6e6b2', '#c9a659', '#584214'] },
+  { id: 'uranus', name: 'Uranus', orbit: 0.71, size: 0.021, arm: 0.0105, col: ['#d6f1ea', '#73b4a9', '#244c46'] },
+  { id: 'neptune', name: 'Neptune', orbit: 0.765, size: 0.021, arm: 0.0105, col: ['#aec0f3', '#3552a8', '#101b45'] }
+];
+PLANETS.forEach((p, i) => { p.idx = i; p.period = A.period(p.id); });
+
+// ---------- wheelwork ----------
+// Two lay arbors beside the central stack. Arbor A turns four times a sidereal year and drives the inner
+// planets; arbor B is geared down from it (12:64 then 12:60) and drives the outer ones. Each planet's
+// tube carries one wheel; tooth counts are the best pair for the true period ratio.
+const SHAFTS = {
+  A: { rate: 4, d: 0.19, ang: 160 * D2R, text: 'four times a year' },
+  B: { rate: 4 * 12 / 64 * 12 / 60, d: 0.27, ang: -20 * D2R, text: '0.15 times a year (geared down 12 to 64, then 12 to 60)' }
+};
+PLANETS.forEach(p => {
+  const target = A.period('earth') / p.period, sh = p.idx < 4 ? SHAFTS.A : SHAFTS.B, rho = target / sh.rate;
+  let best = null;
+  for (let nw = 40; nw <= 220; nw++) {
+    const nd = Math.round(rho * nw);
+    if (nd < 7 || nd > 220) continue;
+    const err = Math.abs(nd / nw / rho - 1) + nw * 2e-7;
+    if (!best || err < best.err) best = { nw, nd, err };
+  }
+  const { nw, nd } = best, model = sh.rate * nd / nw;
+  p.gear = { nw, nd, sh, rw: sh.d * nw / (nw + nd), rd: sh.d * nd / (nw + nd) };
+  p.train = `Its wheel of ${nw} teeth is driven by ${nd} on an arbor turning ${sh.text}: ${model.toFixed(4)} turns a year, against ${target.toFixed(4)} in the sky.`;
+});
+
+const qs = s => document.querySelector(s);
+const canvas = qs('#c'), ctx = canvas.getContext('2d');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let wallpaper = location.hash === '#wallpaper';
+
+const JD_MIN = A.toJD(-2999, 1, 1), JD_MAX = A.toJD(3000, 12, 31);
+const S = {
+  jd: A.fromDate(new Date()),
+  rate: reduceMotion ? 1 : 7,
+  playing: true,
+  sweep: null,
+  vel: 0,            // flywheel momentum, days per second
+  crank: 0,          // crank angle, radians
+  drag: null,
+  selected: null,
+  lastInput: performance.now(),
+  pos: {}
+};
+const clampJD = jd => Math.min(JD_MAX, Math.max(JD_MIN, jd));
+
+// ---------- layout ----------
+let W = 0, H = 0, dpr = 1, cx = 0, cy = 0, R = 100;
+const stat = document.createElement('canvas'), sctx = stat.getContext('2d');
+const L = { x: -0.6, y: -0.8 }; // light from the upper left
+
+function layout() {
+  W = innerWidth; H = innerHeight;
+  dpr = Math.min(devicePixelRatio || 1, wallpaper ? 1.5 : 2);
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  const bar = qs('.bar');
+  const uiB = wallpaper ? 0 : bar.getBoundingClientRect().height;
+  const uiT = wallpaper ? 0 : (W < 640 ? 58 : 0);
+  const avH = H - uiB - uiT;
+  R = Math.max(80, Math.min(W, avH) / 2 * 0.95);
+  cx = W / 2; cy = uiT + avH / 2;
+  buildStatic();
+  buildGears();
+}
+
+function makeGear(N, r, steel) {
+  const m = 2 * r / N, tip = r + m * 0.9, root = r - m * 1.05, pad = 3;
+  const size = Math.ceil((tip + pad) * 2 * dpr);
+  const cv = document.createElement('canvas'); cv.width = cv.height = size;
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, size / 2, size / 2);
+  const path = new Path2D();
+  if (m * dpr < 1.3) path.arc(0, 0, r + m * 0.3, 0, TAU);
+  else {
+    const h = Math.PI / N;
+    for (let j = 0; j < N; j++) {
+      const a = j / N * TAU;
+      [[root, a - h], [root, a - h * 0.6], [tip, a - h * 0.34], [tip, a + h * 0.34], [root, a + h * 0.6]]
+        .forEach(([rr, aa], k) => (j || k) ? path.lineTo(rr * Math.cos(aa), rr * Math.sin(aa)) : path.moveTo(rr * Math.cos(aa), rr * Math.sin(aa)));
+    }
+    path.closePath();
+  }
+  const rimIn = root - Math.max(2, r * 0.11), hub = Math.max(3, r * 0.22);
+  if (!steel && rimIn - hub > 9) {
+    const n = r > 80 ? 6 : r > 40 ? 5 : 4, sw = Math.max(1.4, r * 0.045);
+    for (let i = 0; i < n; i++) {
+      const a0 = i / n * TAU, a1 = (i + 1) / n * TAU;
+      path.moveTo((hub) * Math.cos(a0 + sw / hub), hub * Math.sin(a0 + sw / hub));
+      path.arc(0, 0, rimIn, a0 + sw / rimIn, a1 - sw / rimIn);
+      path.arc(0, 0, hub, a1 - sw / hub, a0 + sw / hub, true);
+      path.closePath();
+    }
+  }
+  const fill = g.createRadialGradient(-r * 0.2, -r * 0.25, r * 0.05, 0, 0, tip);
+  if (steel) { fill.addColorStop(0, '#eef2f7'); fill.addColorStop(0.6, '#8e98a6'); fill.addColorStop(1, '#3d4552'); }
+  else { fill.addColorStop(0, T.hi); fill.addColorStop(0.55, T.brass); fill.addColorStop(1, '#7d5a22'); }
+  g.fillStyle = fill; g.fill(path, 'evenodd');
+  g.save(); g.clip(path, 'evenodd');
+  const rr = rng(N * 7 + 1);
+  for (let k = hub * 0.5; k < tip; k += 1.2) {
+    g.strokeStyle = `rgba(${rr() < 0.5 ? '255,244,214' : '50,30,6'},${0.04 + rr() * 0.06})`; g.lineWidth = 0.6;
+    g.beginPath(); g.arc(0, 0, k, 0, TAU); g.stroke();
+  }
+  g.restore();
+  g.lineWidth = 0.7; g.strokeStyle = steel ? 'rgba(20,24,32,0.8)' : 'rgba(46,28,6,0.85)'; g.stroke(path);
+  const hb = g.createRadialGradient(-hub * 0.25, -hub * 0.3, 0, 0, 0, hub * 0.75);
+  hb.addColorStop(0, steel ? '#f4f7fb' : T.hi); hb.addColorStop(1, steel ? '#4a5260' : T.lo);
+  g.fillStyle = hb; g.beginPath(); g.arc(0, 0, Math.max(1.5, hub * 0.7), 0, TAU); g.fill();
+  g.fillStyle = 'rgba(30,20,8,0.7)'; g.beginPath(); g.arc(0, 0, Math.max(0.8, hub * 0.18), 0, TAU); g.fill();
+  // blurred silhouette for the shadow
+  const blur = Math.max(2, r * 0.06), ssz = size + Math.ceil(blur * 4 * dpr);
+  const sv = document.createElement('canvas'); sv.width = sv.height = ssz;
+  const sg = sv.getContext('2d');
+  sg.shadowColor = 'rgba(0,0,0,0.62)'; sg.shadowBlur = blur * dpr; sg.shadowOffsetX = ssz * 2;
+  sg.drawImage(cv, (ssz - size) / 2 - ssz * 2, (ssz - size) / 2);
+  return { cv, size: size / dpr, sv, ssize: ssz / dpr };
+}
+let gearSprites = [];
+function buildGears() {
+  gearSprites = PLANETS.map(p => ({
+    wheel: makeGear(p.gear.nw, p.gear.rw * R, false),
+    drive: makeGear(p.gear.nd, p.gear.rd * R, p.gear.nd < 16)
+  }));
+}
+function sprite(c, s, x, y, ang, height) {
+  if (height) {
+    c.save(); c.translate(x + height * 0.6, y + height * 0.8); c.rotate(ang);
+    c.drawImage(s.sv, -s.ssize / 2, -s.ssize / 2, s.ssize, s.ssize); c.restore();
+  }
+  c.save(); c.translate(x, y); c.rotate(ang);
+  c.drawImage(s.cv, -s.size / 2, -s.size / 2, s.size, s.size); c.restore();
+}
+function drawWheelwork(c, P) {
+  for (let i = PLANETS.length - 1; i >= 0; i--) {
+    const p = PLANETS[i], g = p.gear, sp = gearSprites[i]; if (!sp) return;
+    const height = R * (0.004 + 0.0028 * (PLANETS.length - i));
+    const tw = screenAngle(P[p.id].lon), psi = g.sh.ang;
+    const td = psi + Math.PI - Math.PI / g.nd + (psi - tw) * g.nw / g.nd;
+    const sx = cx + g.sh.d * R * Math.cos(psi), sy = cy + g.sh.d * R * Math.sin(psi);
+    sprite(c, sp.wheel, cx, cy, tw, height);
+    sprite(c, sp.drive, sx, sy, td, height);
+    if (i === 0 || i === 4) {
+      const ar = c.createRadialGradient(sx - 1.5, sy - 2, 0, sx, sy, R * 0.014);
+      ar.addColorStop(0, '#f2f5fa'); ar.addColorStop(1, '#3c4350');
+      c.fillStyle = ar; c.beginPath(); c.arc(sx, sy, R * 0.012, 0, TAU); c.fill();
+    }
+  }
+}
+
+// ---------- helpers ----------
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const polar = (r, a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+const screenAngle = lonDeg => -lonDeg * D2R;
+function ring(c, r0, r1) { c.beginPath(); c.arc(cx, cy, r1, 0, TAU); c.arc(cx, cy, r0, 0, TAU, true); }
+function brassGradient(c, x, y, r, strong) {
+  if (c.createConicGradient) {
+    const g = c.createConicGradient(-0.7, x, y);
+    const a = strong ? 1 : 0.6;
+    const stops = [T.hi, T.brass, '#8a6527', T.brass, T.hi, '#a57c34', T.brass, '#7b5a22', T.hi];
+    stops.forEach((s, i) => g.addColorStop(i / (stops.length - 1), s));
+    return g;
+  }
+  const g = c.createLinearGradient(x - r, y - r, x + r, y + r);
+  g.addColorStop(0, T.hi); g.addColorStop(0.45, T.brass); g.addColorStop(1, '#6f5020');
+  return g;
+}
+function engraveLine(c, x0, y0, x1, y1, w) {
+  c.lineWidth = w;
+  c.strokeStyle = 'rgba(255, 238, 190, 0.38)';
+  c.beginPath(); c.moveTo(x0 + 0.6, y0 + 0.7); c.lineTo(x1 + 0.6, y1 + 0.7); c.stroke();
+  c.strokeStyle = 'rgba(38, 22, 4, 0.85)';
+  c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke();
+}
+function engraveCircle(c, r, w) {
+  c.lineWidth = w;
+  c.strokeStyle = 'rgba(255, 238, 190, 0.35)';
+  c.beginPath(); c.arc(cx + 0.6, cy + 0.7, r, 0, TAU); c.stroke();
+  c.strokeStyle = 'rgba(38, 22, 4, 0.85)';
+  c.beginPath(); c.arc(cx, cy, r, 0, TAU); c.stroke();
+}
+function arcText(c, text, r, center, size, font) {
+  c.font = `${size}px ${font}`;
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  const widths = [...text].map(ch => c.measureText(ch).width * 1.04);
+  const total = widths.reduce((a, b) => a + b, 0);
+  const flip = Math.sin(center) > 0.05;
+  let acc = 0;
+  [...text].forEach((ch, i) => {
+    const mid = (acc + widths[i] / 2) / r;
+    const th = flip ? center + total / (2 * r) - mid : center - total / (2 * r) + mid;
+    acc += widths[i];
+    for (const pass of [0, 1]) {
+      c.save();
+      c.translate(cx + r * Math.cos(th) + (pass ? 0 : 0.6), cy + r * Math.sin(th) + (pass ? 0 : 0.7));
+      c.rotate(flip ? th - Math.PI / 2 : th + Math.PI / 2);
+      c.fillStyle = pass ? 'rgba(38, 22, 4, 0.9)' : 'rgba(255, 238, 190, 0.4)';
+      c.fillText(ch, 0, 0);
+      c.restore();
+    }
+  });
+}
+
+// Calendar: the Earth's heliocentric longitude (equinox of date) for each day of a common year.
+const CAL_YEAR = 2025;
+function calAngle(doy) {
+  const jd = A.toJD(CAL_YEAR, 1, 1) + doy;
+  return screenAngle(A.lonOf(A.helio('earth', jd)) + A.precession(jd));
+}
+
+// ---------- static layer: table, drum, rings, engraving ----------
+function buildStatic() {
+  stat.width = canvas.width; stat.height = canvas.height;
+  const c = sctx;
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // ebony table with a soft lamp pool
+  const bg = c.createRadialGradient(cx - R * 0.2, cy - R * 0.35, R * 0.1, cx, cy, Math.max(W, H) * 0.85);
+  bg.addColorStop(0, '#33231a'); bg.addColorStop(0.45, '#1d140d'); bg.addColorStop(1, '#0a0705');
+  c.fillStyle = bg; c.fillRect(0, 0, W, H);
+  const rand = rng(7);
+  c.lineWidth = 1;
+  for (let i = 0; i < 170; i++) {
+    const y = rand() * H, amp = 6 + rand() * 18, ph = rand() * TAU;
+    c.strokeStyle = rand() < 0.5 ? `rgba(0,0,0,${0.05 + rand() * 0.07})` : `rgba(140,90,50,${0.02 + rand() * 0.035})`;
+    c.beginPath();
+    for (let x = -10; x <= W + 10; x += 24) {
+      const yy = y + Math.sin(x / (180 + amp * 9) + ph) * amp;
+      x < 0 ? c.moveTo(x, yy) : c.lineTo(x, yy);
+    }
+    c.stroke();
+  }
+  // drum shadow
+  c.save();
+  c.shadowColor = 'rgba(0,0,0,0.7)'; c.shadowBlur = R * 0.09 * dpr;
+  c.shadowOffsetX = R * 0.03 * dpr; c.shadowOffsetY = R * 0.045 * dpr;
+  c.fillStyle = '#120c07'; c.beginPath(); c.arc(cx, cy, R * 0.99, 0, TAU); c.fill();
+  c.restore();
+  // inner field: dark lacquered ebony
+  const fg = c.createRadialGradient(cx - R * 0.15, cy - R * 0.2, R * 0.05, cx, cy, R * 0.8);
+  fg.addColorStop(0, '#2d1f14'); fg.addColorStop(0.7, '#1b120b'); fg.addColorStop(1, '#100a06');
+  c.fillStyle = fg; c.beginPath(); c.arc(cx, cy, R * 0.8, 0, TAU); c.fill();
+  const sheen = c.createLinearGradient(cx - R, cy - R, cx + R * 0.3, cy + R * 0.3);
+  sheen.addColorStop(0, 'rgba(255,220,170,0.07)'); sheen.addColorStop(0.5, 'rgba(255,220,170,0)');
+  c.fillStyle = sheen; c.beginPath(); c.arc(cx, cy, R * 0.8, 0, TAU); c.fill();
+  // engraved orbit tracks and sign rays on the field
+  c.lineWidth = 1;
+  PLANETS.forEach(p => {
+    c.strokeStyle = 'rgba(196,154,69,0.2)';
+    c.beginPath(); c.arc(cx, cy, p.orbit * R, 0, TAU); c.stroke();
+  });
+  c.strokeStyle = 'rgba(196,154,69,0.08)';
+  for (let s = 0; s < 12; s++) {
+    const a = screenAngle(s * 30);
+    c.beginPath(); c.moveTo(...polar(R * 0.27, a)); c.lineTo(...polar(R * 0.795, a)); c.stroke();
+  }
+  // brass ring (calendar inside, zodiac outside)
+  c.save();
+  c.fillStyle = brassGradient(c, cx, cy, R, true);
+  ring(c, R * 0.8, R * 0.99); c.fill('evenodd');
+  // turned grain
+  const rr = rng(3);
+  for (let r = R * 0.8; r < R * 0.99; r += 1.3) {
+    c.strokeStyle = `rgba(${rr() < 0.5 ? '255,240,200' : '60,35,5'},${0.03 + rr() * 0.05})`;
+    c.beginPath(); c.arc(cx, cy, r, 0, TAU); c.stroke();
+  }
+  c.restore();
+  const fell = "'IM Fell English', Georgia, serif";
+  const tw = Math.max(0.6, R / 520);
+  engraveCircle(c, R * 0.985, 1.2 * tw);
+  engraveCircle(c, R * 0.968, 0.8 * tw);
+  engraveCircle(c, R * 0.887, 1.2 * tw);
+  engraveCircle(c, R * 0.88, 0.8 * tw);
+  engraveCircle(c, R * 0.82, 0.8 * tw);
+  engraveCircle(c, R * 0.805, 1.2 * tw);
+  // zodiac: degree scale and sign names
+  for (let d = 0; d < 360; d++) {
+    const a = screenAngle(d);
+    const len = d % 30 === 0 ? 0.098 : d % 10 === 0 ? 0.03 : d % 5 === 0 ? 0.022 : 0.014;
+    if (R < 260 && d % 5 !== 0) continue;
+    const r1 = R * 0.968 + (d % 30 === 0 ? R * 0.017 : 0);
+    engraveLine(c, ...polar(r1, a), ...polar(R * 0.968 - R * len + (d % 30 === 0 ? R * 0.017 : 0), a), (d % 30 === 0 ? 1.1 : 0.7) * tw);
+  }
+  const zs = Math.max(9, R * 0.04);
+  SIGNS.forEach((s, i) => arcText(c, s, R * 0.919, screenAngle(i * 30 + 15), zs, fell));
+  // calendar: day ticks on the inner edge, month names between
+  const days = 365;
+  const monthStart = [0]; for (let m = 1; m < 12; m++) monthStart.push(A.toJD(CAL_YEAR, m + 1, 1) - A.toJD(CAL_YEAR, 1, 1));
+  const pxPerDay = TAU * R * 0.82 / 365;
+  for (let d = 0; d < days; d++) {
+    const a = calAngle(d);
+    const dom = d - monthStart.filter(s => s <= d).pop();
+    const isM = dom === 0;
+    if (!isM && pxPerDay < 3.2 && dom % 5 !== 4) continue;
+    const len = isM ? 0.075 : dom % 10 === 9 ? 0.03 : dom % 5 === 4 ? 0.022 : 0.012;
+    engraveLine(c, ...polar(R * 0.82, a), ...polar(R * 0.82 + R * len, a), (isM ? 1.1 : 0.7) * tw);
+  }
+  const ms = Math.max(8.5, R * 0.034);
+  MONTHS.forEach((m, i) => {
+    const s = monthStart[i], e = i < 11 ? monthStart[i + 1] : days;
+    const a0 = calAngle(s), a1 = calAngle(e);
+    const mid = a0 + A.wrap180((a1 - a0) / D2R) * D2R / 2;
+    arcText(c, m, R * 0.851, mid, ms, fell);
+  });
+  // maker's line, engraved on the field
+  c.save();
+  c.font = `italic ${Math.max(9, R * 0.026)}px ${fell}`;
+  c.textAlign = 'center'; c.fillStyle = 'rgba(196,154,69,0.34)';
+  c.fillText('fecit anno MMXXVI', cx, cy + R * 0.78 - R * 0.012);
+  c.restore();
+  // crank bracket: a brass bridge from the drum to the winding arbor
+  const ca = Math.PI / 4, P = polar(R * 1.06, ca);
+  c.save();
+  c.shadowColor = 'rgba(0,0,0,0.6)'; c.shadowBlur = 8 * dpr; c.shadowOffsetX = 3 * dpr; c.shadowOffsetY = 4 * dpr;
+  c.fillStyle = brassGradient(c, P[0], P[1], R * 0.1, true);
+  c.beginPath();
+  const n = [-Math.sin(ca), Math.cos(ca)], w = R * 0.03;
+  const B0 = polar(R * 0.95, ca);
+  c.moveTo(B0[0] + n[0] * w * 1.4, B0[1] + n[1] * w * 1.4);
+  c.lineTo(P[0] + n[0] * w, P[1] + n[1] * w);
+  c.arc(P[0], P[1], w, ca + Math.PI / 2, ca - Math.PI / 2, true);
+  c.lineTo(B0[0] - n[0] * w * 1.4, B0[1] - n[1] * w * 1.4);
+  c.closePath(); c.fill();
+  c.restore();
+  // a second bridge, lower left, carries the balance of the escapement
+  {
+    const ba = Math.PI * 3 / 4, Q = polar(R * 1.06, ba), n2 = [-Math.sin(ba), Math.cos(ba)], w2 = R * 0.026, B1 = polar(R * 0.95, ba);
+    c.save();
+    c.shadowColor = 'rgba(0,0,0,0.6)'; c.shadowBlur = 8 * dpr; c.shadowOffsetX = 3 * dpr; c.shadowOffsetY = 4 * dpr;
+    c.fillStyle = brassGradient(c, Q[0], Q[1], R * 0.1, true);
+    c.beginPath();
+    c.moveTo(B1[0] + n2[0] * w2 * 1.4, B1[1] + n2[1] * w2 * 1.4);
+    c.lineTo(Q[0] + n2[0] * w2, Q[1] + n2[1] * w2);
+    c.arc(Q[0], Q[1], R * 0.05, ba + Math.PI / 2, ba - Math.PI / 2, true);
+    c.lineTo(B1[0] - n2[0] * w2 * 1.4, B1[1] - n2[1] * w2 * 1.4);
+    c.closePath(); c.fill();
+    c.restore();
+  }
+  // sunburst under the sun ball
+  c.save();
+  c.translate(cx, cy);
+  c.shadowColor = 'rgba(0,0,0,0.55)'; c.shadowBlur = 6 * dpr; c.shadowOffsetX = 2 * dpr; c.shadowOffsetY = 3 * dpr;
+  c.fillStyle = brassGradient(c, 0, 0, R * 0.1, true);
+  c.beginPath();
+  const NR = 16;
+  for (let i = 0; i < NR * 2; i++) {
+    const a = i / (NR * 2) * TAU, long = i % 4 === 0, r = i % 2 === 0 ? R * (long ? 0.085 : 0.07) : R * 0.056;
+    i === 0 ? c.moveTo(r * Math.cos(a), r * Math.sin(a)) : c.lineTo(r * Math.cos(a), r * Math.sin(a));
+  }
+  c.closePath(); c.fill();
+  c.restore();
+}
+
+// ---------- dynamic drawing ----------
+function ball(c, x, y, r, col, height) {
+  const sh = c.createRadialGradient(x + height * 0.6, y + height * 0.8, 0, x + height * 0.6, y + height * 0.8, r * 1.5);
+  sh.addColorStop(0, 'rgba(0,0,0,0.55)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = sh; c.beginPath(); c.arc(x + height * 0.6, y + height * 0.8, r * 1.5, 0, TAU); c.fill();
+  const g = c.createRadialGradient(x - r * 0.38, y - r * 0.45, r * 0.08, x, y, r * 1.05);
+  g.addColorStop(0, col[0]); g.addColorStop(0.55, col[1]); g.addColorStop(1, col[2]);
+  c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
+}
+function specular(c, x, y, r) {
+  c.fillStyle = 'rgba(255,255,255,0.55)';
+  c.beginPath(); c.ellipse(x - r * 0.38, y - r * 0.45, r * 0.22, r * 0.14, -0.6, 0, TAU); c.fill();
+}
+function armShape(c, a, r0, r1, w0, w1) {
+  const u = [Math.cos(a), Math.sin(a)], n = [-u[1], u[0]];
+  c.beginPath();
+  c.moveTo(cx + u[0] * r0 + n[0] * w0, cy + u[1] * r0 + n[1] * w0);
+  c.lineTo(cx + u[0] * r1 + n[0] * w1, cy + u[1] * r1 + n[1] * w1);
+  c.arc(cx + u[0] * r1, cy + u[1] * r1, w1, a + Math.PI / 2, a - Math.PI / 2, true);
+  c.lineTo(cx + u[0] * r0 - n[0] * w0, cy + u[1] * r0 - n[1] * w0);
+  c.closePath();
+}
+function drawArm(c, a, r1, w, height) {
+  c.save();
+  c.shadowColor = 'rgba(0,0,0,0.5)'; c.shadowBlur = height * 0.5 * dpr;
+  c.shadowOffsetX = height * 0.6 * dpr; c.shadowOffsetY = height * 0.8 * dpr;
+  c.fillStyle = T.brass;
+  armShape(c, a, R * 0.03, r1, w * 1.3, w * 0.75); c.fill();
+  c.restore();
+  // bevel: lit edge toward the lamp, shaded edge away
+  const n = [-Math.sin(a), Math.cos(a)], lit = n[0] * L.x + n[1] * L.y > 0 ? 1 : -1;
+  c.lineWidth = Math.max(0.8, w * 0.35);
+  for (const [side, col] of [[lit, 'rgba(255,236,180,0.75)'], [-lit, 'rgba(70,45,10,0.7)']]) {
+    c.strokeStyle = col;
+    c.beginPath();
+    const o0 = w * 1.3 * 0.7 * side, o1 = w * 0.75 * 0.7 * side;
+    c.moveTo(cx + Math.cos(a) * R * 0.03 + n[0] * o0, cy + Math.sin(a) * R * 0.03 + n[1] * o0);
+    c.lineTo(cx + Math.cos(a) * (r1 - w) + n[0] * o1, cy + Math.sin(a) * (r1 - w) + n[1] * o1);
+    c.stroke();
+  }
+  const [px, py] = polar(r1, a);
+  const bg = c.createRadialGradient(px - w * 0.5, py - w * 0.6, 0, px, py, w * 1.3);
+  bg.addColorStop(0, T.hi); bg.addColorStop(1, T.lo);
+  c.fillStyle = bg; c.beginPath(); c.arc(px, py, w * 1.25, 0, TAU); c.fill();
+}
+
+function positions(jd) {
+  const pre = A.precession(jd), out = {};
+  const earth = A.helio('earth', jd);
+  PLANETS.forEach(p => {
+    const h = p.id === 'earth' ? earth : A.helio(p.id, jd);
+    out[p.id] = { lon: A.norm360(A.lonOf(h) + pre), r: Math.hypot(h.x, h.y, h.z) };
+  });
+  const m = A.moon(jd);
+  out.moon = m;
+  out.sunLon = A.norm360(out.earth.lon + 180);
+  return out;
+}
+
+function draw() {
+  const c = ctx;
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.drawImage(stat, 0, 0);
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const P = S.pos = positions(S.jd);
+  const hits = [];
+  drawWheelwork(c, P);
+  drawAlignment(c, P);
+  // arms, outermost (lowest) first
+  for (let i = PLANETS.length - 1; i >= 0; i--) {
+    const p = PLANETS[i], a = screenAngle(P[p.id].lon);
+    const height = R * (0.012 + 0.0025 * (PLANETS.length - i));
+    drawArm(c, a, p.orbit * R, p.arm * R, height);
+  }
+  // Earth's date hand in blued steel, reaching to the calendar
+  {
+    const a = screenAngle(P.earth.lon), u = [Math.cos(a), Math.sin(a)], n = [-u[1], u[0]];
+    const r0 = R * 0.43, r1 = R * 0.875, w = R * 0.0042;
+    c.save();
+    c.shadowColor = 'rgba(0,0,0,0.5)'; c.shadowBlur = 3 * dpr; c.shadowOffsetX = R * 0.012 * dpr; c.shadowOffsetY = R * 0.016 * dpr;
+    const g = c.createLinearGradient(cx + n[0] * w, cy + n[1] * w, cx - n[0] * w, cy - n[1] * w);
+    g.addColorStop(0, T.steelHi); g.addColorStop(0.5, T.steel); g.addColorStop(1, '#0b1226');
+    c.fillStyle = T.steel;
+    c.beginPath();
+    c.moveTo(cx + u[0] * r0 + n[0] * w, cy + u[1] * r0 + n[1] * w);
+    c.lineTo(cx + u[0] * (r1 - R * 0.03) + n[0] * w * 0.8, cy + u[1] * (r1 - R * 0.03) + n[1] * w * 0.8);
+    c.lineTo(cx + u[0] * (r1 - R * 0.015) + n[0] * w * 2.4, cy + u[1] * (r1 - R * 0.015) + n[1] * w * 2.4);
+    c.lineTo(cx + u[0] * r1, cy + u[1] * r1);
+    c.lineTo(cx + u[0] * (r1 - R * 0.015) - n[0] * w * 2.4, cy + u[1] * (r1 - R * 0.015) - n[1] * w * 2.4);
+    c.lineTo(cx + u[0] * (r1 - R * 0.03) - n[0] * w * 0.8, cy + u[1] * (r1 - R * 0.03) - n[1] * w * 0.8);
+    c.lineTo(cx + u[0] * r0 - n[0] * w, cy + u[1] * r0 - n[1] * w);
+    c.closePath(); c.fill();
+    c.restore();
+    c.strokeStyle = 'rgba(160,185,240,0.55)'; c.lineWidth = 0.7;
+    c.beginPath(); c.moveTo(...polar(r0 + R * 0.03, a)); c.lineTo(...polar(r1 - R * 0.03, a)); c.stroke();
+  }
+  // balls on their pillars
+  PLANETS.forEach(p => {
+    const a = screenAngle(P[p.id].lon), [x, y] = polar(p.orbit * R, a), r = p.size * R;
+    const height = R * 0.03;
+    ball(c, x, y, r, p.col, height);
+    if (p.id === 'jupiter') {
+      c.save(); c.beginPath(); c.arc(x, y, r, 0, TAU); c.clip();
+      c.strokeStyle = 'rgba(120,70,30,0.45)';
+      [[0.38, 0.09], [0.62, 0.11], [0.84, 0.07]].forEach(([k, w]) => { c.lineWidth = r * w; c.beginPath(); c.arc(x, y, r * k, 0, TAU); c.stroke(); });
+      c.restore();
+    }
+    if (p.id === 'earth') {
+      c.fillStyle = 'rgba(245,240,228,0.85)'; c.beginPath(); c.arc(x, y, r * 0.32, 0, TAU); c.fill();
+    }
+    if (p.id === 'saturn') {
+      // brass ring, fixed in space: node near 169.5 degrees, tilted 28 degrees
+      const ra = screenAngle(169.5);
+      c.save(); c.translate(x, y); c.rotate(ra);
+      c.lineWidth = r * 0.42; c.strokeStyle = 'rgba(0,0,0,0.35)';
+      c.beginPath(); c.ellipse(height * 0.25, height * 0.3, r * 2.0, r * 2.0 * 0.883, 0, 0, TAU); c.stroke();
+      c.strokeStyle = T.brass; c.beginPath(); c.ellipse(0, 0, r * 2.0, r * 2.0 * 0.883, 0, 0, TAU); c.stroke();
+      c.lineWidth = r * 0.08; c.strokeStyle = T.hi; c.beginPath(); c.ellipse(0, 0, r * 2.13, r * 2.13 * 0.883, 0, Math.PI * 1.0, Math.PI * 1.6); c.stroke();
+      c.restore();
+    }
+    specular(c, x, y, r);
+    hits.push({ id: p.id, x, y, r: Math.max(r * 1.3, 16) });
+    if (S.selected === p.id) {
+      c.strokeStyle = 'rgba(246,223,156,0.85)'; c.lineWidth = 1.2;
+      c.beginPath(); c.arc(x, y, r + 6, 0, TAU); c.stroke();
+    }
+  });
+  // the Moon on its little arm about the Earth (geocentric longitude of date)
+  {
+    const ea = screenAngle(P.earth.lon), [ex, ey] = polar(PLANETS[2].orbit * R, ea);
+    const ma = screenAngle(P.moon.lon), mr = R * 0.05;
+    const mx = ex + mr * Math.cos(ma), my = ey + mr * Math.sin(ma);
+    c.strokeStyle = T.brass; c.lineWidth = Math.max(1, R * 0.004);
+    c.beginPath(); c.moveTo(ex, ey); c.lineTo(mx, my); c.stroke();
+    ball(c, mx, my, R * 0.009, ['#f7f5ee', '#bdb8ad', '#55524b'], R * 0.035);
+    specular(c, mx, my, R * 0.009);
+    hits.push({ id: 'moon', x: mx, y: my, r: Math.max(R * 0.012, 12) });
+  }
+  // the Sun, gilded, on top of the central arbor
+  {
+    const r = R * 0.05;
+    ball(c, cx, cy, r, ['#fff4c8', T.gilt, '#7e5513'], R * 0.035);
+    specular(c, cx, cy, r);
+    hits.push({ id: 'sun', x: cx, y: cy, r: Math.max(r, 18) });
+  }
+  if (S.active && S.glow) {
+    c.save();
+    S.glow.ids.forEach(id => {
+      const [x, y] = bodyXY(id, P), h = hits.find(q => q.id === id);
+      const r = id === 'sun' ? R * 0.07 : Math.max(R * 0.02, h ? Math.min(h.r, R * 0.045) : 8);
+      c.strokeStyle = `rgba(255,228,150,${0.7 * S.glow.a})`; c.lineWidth = 1.2;
+      c.beginPath(); c.arc(x, y, r + 4, 0, TAU); c.stroke();
+    });
+    c.restore();
+  }
+  drawBalance(c);
+  drawCrank(c);
+  S.hits = hits;
+}
+
+// The balance of the escapement swings once for every two ticks.
+function drawBalance(c) {
+  const ba = Math.PI * 3 / 4, [qx, qy] = polar(R * 1.06, ba), rb = R * 0.042;
+  const swing = (reduceMotion ? 0.5 : 1.15) * Math.sin(Math.PI * S.jd / tickUnit());
+  // hairspring, blued steel, breathing with the swing
+  c.save(); c.translate(qx, qy);
+  c.strokeStyle = 'rgba(120,150,215,0.85)'; c.lineWidth = Math.max(0.6, R * 0.0016);
+  c.beginPath();
+  for (let t = 0; t <= 1; t += 0.01) {
+    const a = t * TAU * 4.5 + swing * t, r = rb * 0.12 + t * rb * 0.58;
+    t ? c.lineTo(r * Math.cos(a), r * Math.sin(a)) : c.moveTo(r * Math.cos(a), r * Math.sin(a));
+  }
+  c.stroke();
+  c.rotate(swing);
+  c.shadowColor = 'rgba(0,0,0,0.5)'; c.shadowBlur = 4 * dpr; c.shadowOffsetX = 3 * dpr; c.shadowOffsetY = 4 * dpr;
+  c.strokeStyle = T.brass; c.lineWidth = R * 0.008;
+  c.beginPath(); c.arc(0, 0, rb, 0, TAU); c.stroke();
+  c.lineWidth = R * 0.005;
+  c.beginPath();
+  for (let i = 0; i < 3; i++) { const a = i / 3 * TAU; c.moveTo(0, 0); c.lineTo(rb * Math.cos(a), rb * Math.sin(a)); }
+  c.stroke();
+  c.shadowColor = 'transparent';
+  c.strokeStyle = 'rgba(255,236,180,0.6)'; c.lineWidth = R * 0.002;
+  c.beginPath(); c.arc(0, 0, rb + R * 0.002, Math.PI * 1.05, Math.PI * 1.55); c.stroke();
+  for (let i = 0; i < 8; i++) { // timing screws on the rim
+    const a = i / 8 * TAU;
+    c.fillStyle = i % 2 ? T.lo : T.hi;
+    c.beginPath(); c.arc(rb * 1.08 * Math.cos(a), rb * 1.08 * Math.sin(a), R * 0.0042, 0, TAU); c.fill();
+  }
+  c.fillStyle = '#c9d2df'; c.beginPath(); c.arc(0, 0, R * 0.007, 0, TAU); c.fill();
+  c.restore();
+}
+
+function drawCrank(c) {
+  const ca = Math.PI / 4, [px, py] = polar(R * 1.06, ca);
+  const a = S.crank, len = R * 0.085;
+  const kx = px + len * Math.cos(a), ky = py + len * Math.sin(a);
+  c.save();
+  c.shadowColor = 'rgba(0,0,0,0.55)'; c.shadowBlur = 5 * dpr; c.shadowOffsetX = 4 * dpr; c.shadowOffsetY = 6 * dpr;
+  c.strokeStyle = T.brass; c.lineCap = 'round'; c.lineWidth = R * 0.016;
+  c.beginPath(); c.moveTo(px, py); c.lineTo(kx, ky); c.stroke();
+  c.restore();
+  c.strokeStyle = 'rgba(255,236,180,0.6)'; c.lineWidth = R * 0.004; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(px, py); c.lineTo(kx, ky); c.stroke();
+  const hub = c.createRadialGradient(px - R * 0.008, py - R * 0.01, 0, px, py, R * 0.022);
+  hub.addColorStop(0, T.hi); hub.addColorStop(1, T.lo);
+  c.fillStyle = hub; c.beginPath(); c.arc(px, py, R * 0.02, 0, TAU); c.fill();
+  ball(c, kx, ky, R * 0.022, ['#6b5446', '#2a1a12', '#080403'], R * 0.03);
+  specular(c, kx, ky, R * 0.022);
+  S.crankAt = { px, py, kx, ky };
+}
+
+// ---------- time ----------
+// ---------- alignments ----------
+const evCache = new Map();
+function eventsOf(y) {
+  if (y < -2999 || y > 3000) return [];
+  if (!evCache.has(y)) { if (evCache.size > 600) evCache.clear(); evCache.set(y, A.yearEvents(y)); }
+  return evCache.get(y);
+}
+function eventsBetween(j0, j1) {
+  const lo = Math.min(j0, j1), hi = Math.max(j0, j1), out = [];
+  for (let y = A.fromJD(lo).y; y <= A.fromJD(hi).y; y++) eventsOf(y).forEach(e => { if (e.jd > lo && e.jd <= hi) out.push(e); });
+  return out;
+}
+function minPriority() {
+  const r = Math.abs(S.vel) > S.rate ? Math.abs(S.vel) : S.rate;
+  return r <= 7.5 ? 1 : r <= 31 ? 2 : r <= 366 ? 3 : 5;
+}
+let toastTimer = 0, toastPri = 0, toastAt = 0;
+function announce(ev) {
+  if (wallpaper) return;
+  const now = performance.now();
+  if (now - toastAt < 1400 && ev.pri < toastPri) return;
+  toastAt = now; toastPri = ev.pri;
+  const t = qs('#toast');
+  t.innerHTML = '';
+  t.append(`${ev.title}, ${dateStr(ev.jd)}`);
+  const sm = document.createElement('small'); sm.textContent = ev.detail; t.append(sm);
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('on'), 5200);
+  S.flash = ev;
+  if (typeof chime === 'function') chime(ev);
+}
+function watchEvents(j0, j1) {
+  if (j0 === j1 || Math.abs(j1 - j0) > 3660) return;
+  const pr = minPriority();
+  let best = null;
+  eventsBetween(j0, j1).forEach(e => { if (e.pri >= pr && (!best || e.pri > best.pri)) best = e; });
+  if (best) announce(best);
+}
+function activeEvent() {
+  const win = Math.max(1.2, Math.min(S.rate, 400) * 0.7);
+  let best = null, bd = Infinity;
+  const y = A.fromJD(S.jd).y;
+  for (const yy of [y - 1, y, y + 1]) eventsOf(yy).forEach(e => {
+    const d = Math.abs(e.jd - S.jd);
+    if (e.pri >= 2 && d < win && (d < bd)) { bd = d; best = e; }
+  });
+  return best ? { ev: best, k: 1 - bd / win } : null;
+}
+function findEvent(dir) {
+  const from = S.sweep ? S.sweep.to : S.jd;
+  let y = A.fromJD(from).y;
+  for (let n = 0; n < 300 && y >= -2999 && y <= 3000; n++, y += dir) {
+    const list = eventsOf(y).filter(e => e.pri >= 2 && (dir > 0 ? e.jd > from + 0.5 : e.jd < from - 0.5));
+    if (list.length) return dir > 0 ? list[0] : list[list.length - 1];
+  }
+  return null;
+}
+function bodyXY(id, P) {
+  if (id === 'sun') return [cx, cy];
+  if (id === 'moon') {
+    const [ex, ey] = polar(PLANETS[2].orbit * R, screenAngle(P.earth.lon)), ma = screenAngle(P.moon.lon);
+    return [ex + R * 0.05 * Math.cos(ma), ey + R * 0.05 * Math.sin(ma)];
+  }
+  const p = PLANETS.find(q => q.id === id);
+  return polar(p.orbit * R, screenAngle(P[id].lon));
+}
+function drawAlignment(c, P) {
+  const act = activeEvent(); S.active = act;
+  if (!act) return;
+  const { ev, k } = act, a = Math.min(1, k * 1.6);
+  let x0, y0, ang;
+  if (ev.line === 'sun') { [x0, y0] = [cx, cy]; ang = screenAngle(P.earth.lon); }
+  else {
+    const [ex, ey] = bodyXY('earth', P), [ax, ay] = bodyXY(ev.bodies[1], P), [bx, by] = bodyXY(ev.bodies[2], P);
+    x0 = ex; y0 = ey; ang = Math.atan2((ay + by) / 2 - ey, (ax + bx) / 2 - ex);
+  }
+  // run the ray out to the inner edge of the calendar ring
+  const dx = Math.cos(ang), dy = Math.sin(ang), ox = x0 - cx, oy = y0 - cy, rr = R * 0.8;
+  const b = ox * dx + oy * dy, t = -b + Math.sqrt(Math.max(0, b * b - (ox * ox + oy * oy - rr * rr)));
+  const x1 = x0 + dx * t, y1 = y0 + dy * t;
+  c.save();
+  c.lineCap = 'round';
+  c.strokeStyle = `rgba(246,214,130,${0.12 * a})`; c.lineWidth = R * 0.02;
+  c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke();
+  c.strokeStyle = `rgba(255,232,168,${0.75 * a})`; c.lineWidth = Math.max(1, R * 0.0025);
+  c.setLineDash([R * 0.012, R * 0.008]);
+  c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke();
+  c.setLineDash([]);
+  c.restore();
+  S.glow = { ids: ev.bodies, a };
+}
+
+const crankUnit = () => S.rate;
+const tickUnit = () => S.rate / 3; // three ticks of the escapement for each second of running
+
+// ---------- sound: escapement and the music of the spheres ----------
+let AC = null, master = null, verb = null, noiseBuf = null, soundOn = false;
+function initAudio() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return false;
+  AC = new Ctx();
+  master = AC.createGain(); master.gain.value = 0;
+  const comp = AC.createDynamicsCompressor();
+  master.connect(comp); comp.connect(AC.destination);
+  verb = AC.createConvolver();
+  const len = Math.floor(AC.sampleRate * 2.4), ir = AC.createBuffer(2, len, AC.sampleRate);
+  for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.4); }
+  verb.buffer = ir;
+  const vg = AC.createGain(); vg.gain.value = 0.22; verb.connect(vg); vg.connect(master);
+  noiseBuf = AC.createBuffer(1, Math.floor(AC.sampleRate * 0.04), AC.sampleRate);
+  const nd = noiseBuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / nd.length, 6);
+  return true;
+}
+// Period to pitch: 0.36 of the period ratio's octaves, folded onto a major pentatonic scale; the Earth sounds C5.
+const SCALE = [0, 2, 4, 7, 9, 12];
+function noteOf(period) {
+  const n = Math.round(-12 * 0.36 * Math.log2(period / A.period('earth'))), o = Math.floor(n / 12), deg = n - o * 12;
+  const snapped = SCALE.reduce((b, v) => Math.abs(v - deg) < Math.abs(b - deg) ? v : b, 0);
+  return 523.25 * Math.pow(2, (o * 12 + snapped) / 12);
+}
+PLANETS.forEach(p => { p.freq = noteOf(p.period); p.sector = null; p.lastNote = 0; });
+function bell(freq, vol, when) {
+  if (!soundOn || !AC) return;
+  const t = when || AC.currentTime + 0.01, dur = 1.4 + Math.max(0, Math.log2(523 / freq)) * 0.7;
+  const out = AC.createGain(); out.gain.value = vol; out.connect(master); out.connect(verb);
+  [[1, 1, 1], [2, 0.32, 0.55], [3.01, 0.16, 0.35], [4.2, 0.07, 0.2]].forEach(([r, a, k]) => {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = 'sine'; o.frequency.value = freq * r;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(a, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur * k);
+    o.connect(g); g.connect(out); o.start(t); o.stop(t + dur * k + 0.05);
+  });
+}
+let tockNext = false, lastTick = 0;
+function tick() {
+  if (!soundOn || !AC) return;
+  const t = AC.currentTime + 0.005, src = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+  src.buffer = noiseBuf; f.type = 'bandpass'; f.frequency.value = tockNext ? 1750 : 2500; f.Q.value = 7;
+  g.gain.value = 0.55; src.connect(f); f.connect(g); g.connect(master); src.start(t);
+  const o = AC.createOscillator(), og = AC.createGain();
+  o.frequency.value = tockNext ? 3100 : 4100;
+  og.gain.setValueAtTime(0.05, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.025);
+  o.connect(og); og.connect(master); o.start(t); o.stop(t + 0.04);
+  tockNext = !tockNext;
+}
+function chime(ev) {
+  if (!soundOn || !AC) return;
+  let t = AC.currentTime + 0.02;
+  ev.bodies.forEach(id => {
+    const p = PLANETS.find(q => q.id === id);
+    const f = p ? p.freq : id === 'moon' ? 1046.5 : 261.63;
+    bell(f, 0.16, t); t += 0.11;
+  });
+}
+let speed = 0;
+function sound(j0, j1, dt, now) {
+  if (!soundOn || !AC || j0 === j1) return;
+  speed = speed * 0.8 + Math.abs(j1 - j0) / Math.max(dt, 1e-3) * 0.2;
+  const u = tickUnit();
+  if (Math.floor(j0 / u) !== Math.floor(j1 / u) && now - lastTick > 45) { lastTick = now; tick(); }
+  if (S.sweep) return;
+  PLANETS.forEach(p => {
+    const orbitsPerSec = speed / p.period;
+    const n = [12, 6, 4, 2, 1].find(k => k * orbitsPerSec <= 2.2) || 1;
+    const sec = Math.floor(S.pos[p.id].lon / (360 / n)) + n * 1000;
+    if (p.sector !== null && p.sectorN === n && sec !== p.sector && now - p.lastNote > 160) {
+      p.lastNote = now; bell(p.freq, 0.1 + 0.05 * (p.idx / 7));
+    }
+    p.sector = sec; p.sectorN = n;
+  });
+}
+function setSound(on) {
+  if (on && !AC && !initAudio()) return;
+  soundOn = on;
+  const b = qs('#sound'); b.textContent = on ? 'Sound on' : 'Sound off'; b.setAttribute('aria-pressed', String(on));
+  if (!AC) return;
+  if (on) AC.resume();
+  master.gain.cancelScheduledValues(AC.currentTime);
+  master.gain.setTargetAtTime(on ? 0.8 : 0, AC.currentTime, 0.05);
+} // one turn of the crank moves the machine as far as a second of running
+function advance(dj) {
+  const before = S.jd;
+  S.jd = clampJD(S.jd + dj);
+  S.crank += (S.jd - before) / crankUnit() * TAU;
+}
+function sweepTo(jd) {
+  jd = clampJD(jd);
+  S.vel = 0;
+  if (reduceMotion) { advance(jd - S.jd); return; }
+  const d = Math.abs(jd - S.jd);
+  S.sweep = { from: S.jd, to: jd, t0: performance.now(), dur: Math.min(2600, 700 + Math.log10(1 + d / 20) * 520) };
+}
+
+// ---------- UI ----------
+const yearStr = y => y > 0 ? String(y) : `${1 - y} BC`;
+function dateStr(jd) { const d = A.fromJD(jd); return `${d.d} ${MONTHS[d.m - 1]} ${yearStr(d.y)}`; }
+const PHASES = ['new', 'waxing crescent', 'first quarter', 'waxing gibbous', 'full', 'waning gibbous', 'last quarter', 'waning crescent'];
+function moonPhase(P) {
+  const e = A.norm360(P.moon.lon - P.sunLon);
+  return PHASES[Math.round(e / 45) % 8];
+}
+let lastDateText = '', lastUI = 0;
+function updateUI(now) {
+  if (wallpaper || now - lastUI < 90) return;
+  lastUI = now;
+  const t = dateStr(S.jd);
+  if (t !== lastDateText) {
+    lastDateText = t;
+    qs('#date').textContent = t;
+    const wd = DAYS[((Math.floor(S.jd + 1.5) % 7) + 7) % 7];
+    qs('#sub').textContent = `${wd}, ${moonPhase(S.pos)} Moon`;
+    const inp = qs('#when');
+    if (document.activeElement !== inp) {
+      const d = A.fromJD(S.jd);
+      inp.value = d.y >= 1 && d.y <= 3000 ? `${String(d.y).padStart(4, '0')}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}` : '';
+    }
+  }
+  if (S.selected) fillCard();
+}
+function fillCard() {
+  const id = S.selected, P = S.pos;
+  const name = qs('#cardName'), dist = qs('#cardDist'), per = qs('#cardPeriod'), train = qs('#cardTrain');
+  if (id === 'sun') {
+    name.textContent = 'The Sun';
+    dist.textContent = `The Earth is ${P.earth.r.toFixed(3)} AU away today.`;
+    per.textContent = 'Fixed on the central arbor; every arm turns about it.';
+    train.textContent = '';
+  } else if (id === 'moon') {
+    const age = A.norm360(P.moon.lon - P.sunLon) / 360 * 29.530589;
+    name.textContent = 'The Moon';
+    dist.textContent = `About ${P.earth.r.toFixed(3)} AU from the Sun, with the Earth.`;
+    per.textContent = 'Goes round the Earth in 27.32 days; new to new in 29.53.';
+    train.textContent = `${age.toFixed(1)} days since new Moon.`;
+  } else {
+    const p = PLANETS.find(q => q.id === id), yrs = p.period / 365.25;
+    name.textContent = p.name;
+    dist.textContent = `${P[id].r.toFixed(P[id].r < 2 ? 3 : 2)} AU from the Sun`;
+    per.textContent = yrs < 2.5 ? `Orbit of ${p.period.toFixed(p.period < 400 ? 1 : 0)} days (${yrs.toFixed(2)} years)` : `Orbit of ${yrs.toFixed(2)} years`;
+    train.textContent = p.train || '';
+  }
+}
+function select(id) {
+  S.selected = id;
+  const card = qs('#card');
+  if (!id) { card.hidden = true; return; }
+  card.hidden = false; fillCard();
+}
+
+// ---------- input ----------
+const toCanvas = e => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+function touched() { S.lastInput = performance.now(); const h = qs('#hint'); if (h) h.classList.add('gone'); }
+canvas.addEventListener('pointerdown', e => {
+  if (wallpaper) return;
+  touched();
+  const [x, y] = toCanvas(e);
+  const k = S.crankAt;
+  const nearCrank = k && (Math.hypot(x - k.kx, y - k.ky) < R * 0.07 || Math.hypot(x - k.px, y - k.py) < R * 0.11);
+  const pivot = nearCrank ? [k.px, k.py] : [cx, cy];
+  S.drag = { id: e.pointerId, x0: x, y0: y, moved: false, crank: nearCrank, pivot, ang: Math.atan2(y - pivot[1], x - pivot[0]), t: performance.now(), v: 0 };
+  S.vel = 0; S.sweep = null;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  const d = S.drag; if (!d || d.id !== e.pointerId) return;
+  const [x, y] = toCanvas(e);
+  if (!d.moved && Math.hypot(x - d.x0, y - d.y0) < 5) return;
+  if (!d.moved) { d.moved = true; canvas.classList.add('dragging'); }
+  const ang = Math.atan2(y - d.pivot[1], x - d.pivot[0]);
+  let da = ang - d.ang; if (da > Math.PI) da -= TAU; if (da < -Math.PI) da += TAU;
+  d.ang = ang;
+  // crank: clockwise winds forward; field: carry the Earth anticlockwise to go forward
+  const dj = d.crank ? da / TAU * crankUnit() : -da / TAU * A.period('earth');
+  advance(dj);
+  const now = performance.now(), dt = Math.max(1, now - d.t) / 1000;
+  d.v = d.v * 0.6 + (dj / dt) * 0.4; d.t = now;
+  touched();
+});
+function endDrag(e) {
+  const d = S.drag; if (!d || d.id !== e.pointerId) return;
+  S.drag = null; canvas.classList.remove('dragging');
+  if (!d.moved) { pick(d.x0, d.y0); return; }
+  if (!reduceMotion && performance.now() - d.t < 90) S.vel = d.v;
+}
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+function pick(x, y) {
+  let best = null, bd = Infinity;
+  (S.hits || []).forEach(h => { const dd = Math.hypot(x - h.x, y - h.y); if (dd < h.r && dd < bd) { bd = dd; best = h.id; } });
+  select(best);
+}
+canvas.addEventListener('keydown', e => {
+  touched();
+  const step = crankUnit() / 8;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { advance(step); e.preventDefault(); }
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { advance(-step); e.preventDefault(); }
+  else if (e.key === 'PageUp') { advance(crankUnit() * 2); e.preventDefault(); }
+  else if (e.key === 'PageDown') { advance(-crankUnit() * 2); e.preventDefault(); }
+  else if (e.key === ' ') { setPlaying(!S.playing); e.preventDefault(); }
+  else if (/^[1-8]$/.test(e.key)) select(PLANETS[+e.key - 1].id);
+});
+addEventListener('keydown', e => { if (e.key === 'Escape') select(null); });
+qs('#cardClose').addEventListener('click', () => { select(null); canvas.focus(); });
+function setPlaying(on) { S.playing = on; qs('#play').textContent = on ? 'Pause' : 'Run'; touched(); }
+qs('#play').addEventListener('click', () => setPlaying(!S.playing));
+qs('#sound').addEventListener('click', () => { touched(); setSound(!soundOn); });
+const rateSel = qs('#rate');
+rateSel.value = String(S.rate);
+rateSel.addEventListener('change', () => { S.rate = +rateSel.value; touched(); });
+for (const [id, dir] of [['#prev', -1], ['#next', 1]]) qs(id).addEventListener('click', () => {
+  touched();
+  const ev = findEvent(dir); if (!ev) return;
+  setPlaying(false);
+  sweepTo(ev.jd);
+  if (S.sweep) S.sweep.ev = ev; else announce(ev);
+});
+qs('#today').addEventListener('click', () => { touched(); sweepTo(A.fromDate(new Date())); });
+qs('#when').addEventListener('change', e => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(e.target.value); if (!m) return;
+  touched(); sweepTo(A.toJD(+m[1], +m[2], +m[3]) + 0.5);
+});
+
+// ---------- loop ----------
+let last = performance.now(), lastPaint = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (wallpaper && now - lastPaint < 32) return;
+  lastPaint = now;
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  const jdBefore = S.jd;
+  if (S.sweep) {
+    const k = Math.min(1, (now - S.sweep.t0) / S.sweep.dur), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+    advance(S.sweep.from + (S.sweep.to - S.sweep.from) * e - S.jd);
+    if (k >= 1) { if (S.sweep.ev) announce(S.sweep.ev); S.sweep = null; }
+  } else if (!S.drag) {
+    if (S.vel) { advance(S.vel * dt); S.vel *= Math.exp(-dt * 1.4); if (Math.abs(S.vel) < S.rate * 0.05) S.vel = 0; }
+    else if (S.playing) advance(S.rate * dt);
+    else if (now - S.lastInput > 45000) setPlaying(true);
+  }
+  if (!S.sweep) watchEvents(jdBefore, S.jd);
+  sound(jdBefore, S.jd, dt, now);
+  if (wallpaper && now - S.wallStart > 600000) { S.wallStart = now; sweepTo(A.fromDate(new Date())); }
+  draw();
+  updateUI(now);
+}
+
+function setMode() {
+  wallpaper = location.hash === '#wallpaper';
+  document.body.classList.toggle('wallpaper', wallpaper);
+  if (wallpaper) { S.rate = 2; S.playing = true; S.wallStart = performance.now(); select(null); if (soundOn) setSound(false); }
+  else { S.rate = +rateSel.value; }
+  layout();
+}
+addEventListener('hashchange', setMode);
+addEventListener('resize', layout);
+setMode();
+if (document.fonts && document.fonts.load) {
+  Promise.all([document.fonts.load("20px 'IM Fell English'"), document.fonts.load("20px 'EB Garamond'")]).then(() => buildStatic()).catch(() => {});
+}
+requestAnimationFrame(frame);
+})();
+</script>

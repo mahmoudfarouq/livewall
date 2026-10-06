@@ -1,0 +1,1040 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fen Murmuration</title>
+<style>
+:root{
+  color-scheme: dark;
+  --bg:#2a3247;
+  --ink:#ece6dc;
+  --ink-soft:rgba(236,230,220,.74);
+  --rule:rgba(236,230,220,.3);
+  --btn:rgba(18,20,28,.28);
+  --btn-hover:rgba(18,20,28,.5);
+  --focus:#f3c891;
+}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);overscroll-behavior:none}
+body{font-family:"Alegreya Sans",system-ui,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+#stage{position:fixed;inset:0;touch-action:none}
+#stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.ui{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;
+  padding:16px max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  pointer-events:none;transition:opacity 1.2s ease}
+.ui.dim{opacity:.32}
+.ui[hidden]{display:none}
+.caption h1{margin:0;font-weight:500;font-size:clamp(20px,2.4vw,28px);letter-spacing:.01em;line-height:1.1;text-shadow:0 1px 12px rgba(0,0,0,.35)}
+.controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;pointer-events:auto}
+.controls button{font:inherit;font-size:15px;line-height:1;color:var(--ink);background:var(--btn);
+  border:1px solid var(--rule);border-radius:999px;padding:10px 16px;min-height:40px;cursor:pointer;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);transition:background .2s ease,border-color .2s ease}
+.controls button:hover{background:var(--btn-hover);border-color:var(--ink-soft)}
+.controls button[aria-pressed="true"]{border-color:var(--focus)}
+.controls button:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+.ui:focus-within{opacity:1}
+@media (max-width:560px){
+  .ui{flex-direction:column;align-items:stretch}
+  .controls{justify-content:flex-start}
+  .caption p{font-size:14px}
+}
+@media (pointer:fine){ #stage{cursor:none} }
+@media (prefers-reduced-motion:reduce){ .ui{transition:none} .controls button{transition:none} }
+.caption p{margin:4px 0 0;font-size:15px;color:var(--ink-soft);max-width:30ch;line-height:1.35;text-shadow:0 1px 10px rgba(0,0,0,.4)}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@400;500&display=swap" rel="stylesheet">
+
+<main id="stage" aria-label="Starlings flocking over a fen at dusk">
+  <canvas id="gl" aria-hidden="true"></canvas>
+  <canvas id="fg" aria-hidden="true"></canvas>
+</main>
+<div class="ui" id="ui">
+  <div class="caption">
+    <h1>Murmuration</h1>
+    <p id="status" aria-live="polite">Starlings over the fen at dusk. You are the falcon.</p>
+  </div>
+  <div class="controls">
+    <button type="button" id="hunt">Send a falcon</button>
+    <button type="button" id="snd" aria-pressed="false">Play sound</button>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+// ---------- setup ----------
+const glc = document.getElementById('gl');
+const fgc = document.getElementById('fg');
+const fg = fgc.getContext('2d');
+const stage = document.getElementById('stage');
+const WALL = location.hash === '#wallpaper';
+const rm = matchMedia('(prefers-reduced-motion: reduce)');
+let reduced = rm.matches;
+try { rm.addEventListener('change', e => { reduced = e.matches; }); } catch (e) { try { rm.addListener(e => { reduced = e.matches; }); } catch (_) {} }
+
+let W = 0, H = 0, DPR = 1, F = 1, CX = 0, HOR = 0;
+const CAMH = 10;           // camera height above the water, metres
+
+const coarse = matchMedia('(pointer: coarse)').matches;
+const smallScreen = Math.min(screen.width, screen.height) < 700;
+const NMAX = (coarse || smallScreen) ? 4500 : 10000;
+let n = NMAX;
+
+// ---------- palette ----------
+function hex(h){ const v = parseInt(h.slice(1),16); return [(v>>16&255)/255,(v>>8&255)/255,(v&255)/255]; }
+const SKY = {
+  zen: hex('#4c6488'), mid: hex('#98a0b4'), hor: hex('#f1b47c'), glow: hex('#ffc988'),
+  cl: hex('#f0a88c'), cd: hex('#5b5870'), land: hex('#2b2731'), bird: hex('#17121a'),
+  glowW: 1, glowE: 0, stars: 0
+};
+
+
+// ---------- the light through the evening ----------
+const KEYS = [
+  [0,   {zen:'#4c6488', mid:'#98a0b4', hor:'#f1b47c', glow:'#ffc988', cl:'#f0a88c', cd:'#5b5870', land:'#2b2731', bird:'#17121a', gw:1,   ge:0,   st:0}],
+  [.22, {zen:'#3a4d70', mid:'#7f8399', hor:'#e59a72', glow:'#f39463', cl:'#d27f70', cd:'#4a4860', land:'#241f29', bird:'#141017', gw:.8,  ge:0,   st:0}],
+  [.42, {zen:'#22304c', mid:'#44506a', hor:'#a87064', glow:'#c86a4c', cl:'#7a5862', cd:'#2c2f42', land:'#1a1820', bird:'#100d13', gw:.45, ge:0,   st:.15}],
+  [.56, {zen:'#131b2e', mid:'#222c42', hor:'#4f4855', glow:'#7a4c46', cl:'#3e3848', cd:'#1c1f2c', land:'#0f0f15', bird:'#0b0a0e', gw:.18, ge:0,   st:.5}],
+  [.66, {zen:'#070b14', mid:'#0b111d', hor:'#161c29', glow:'#2a2a33', cl:'#1b2030', cd:'#0c0f17', land:'#050609', bird:'#050508', gw:0,   ge:0,   st:1}],
+  [.8,  {zen:'#080c16', mid:'#0d1320', hor:'#1b202d', glow:'#3a3438', cl:'#1d2232', cd:'#0c0f17', land:'#060709', bird:'#060609', gw:0,   ge:.05, st:1}],
+  [.87, {zen:'#182238', mid:'#36405a', hor:'#847c88', glow:'#c4ab98', cl:'#6d6274', cd:'#2a2c3c', land:'#14131a', bird:'#0e0c11', gw:0,   ge:.35, st:.3}],
+  [.93, {zen:'#5b7392', mid:'#a6b1c0', hor:'#f0d6ac', glow:'#fff0c8', cl:'#f1c7a8', cd:'#6d7082', land:'#2a2a33', bird:'#18151b', gw:0,   ge:.9,  st:0}],
+  [1,   null]
+].map(([u, k]) => [u, k && Object.fromEntries(Object.entries(k).map(([a, b]) => [a, typeof b === 'string' ? hex(b) : b]))]);
+KEYS[KEYS.length-1][1] = KEYS[0][1];
+function palette(u){
+  let i = 0; while (i < KEYS.length - 2 && u >= KEYS[i+1][0]) i++;
+  const [u0, A] = KEYS[i], [u1, B] = KEYS[i+1];
+  let f = (u - u0)/(u1 - u0); f = f*f*(3 - 2*f);
+  for (const c of ['zen','mid','hor','glow','cl','cd','land','bird']){
+    const a = A[c], b = B[c], o = SKY[c]; o[0] = a[0]+(b[0]-a[0])*f; o[1] = a[1]+(b[1]-a[1])*f; o[2] = a[2]+(b[2]-a[2])*f;
+  }
+  SKY.glowW = A.gw + (B.gw-A.gw)*f; SKY.glowE = A.ge + (B.ge-A.ge)*f; SKY.stars = A.st + (B.st-A.st)*f;
+}
+
+// ---------- WebGL ----------
+let gl = glc.getContext('webgl', {alpha:false, antialias:false, depth:false, stencil:false, preserveDrawingBuffer:false, powerPreference:'high-performance'})
+        || glc.getContext('experimental-webgl');
+
+const hiP = gl && gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT).precision > 0;
+const FP = hiP ? 'precision highp float;' : 'precision mediump float;';
+
+function shader(type, src){
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+function program(vs, fs){
+  const p = gl.createProgram();
+  gl.attachShader(p, shader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, shader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}; const cnt = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < cnt; i++){ const nm = gl.getActiveUniform(p, i).name; u[nm] = gl.getUniformLocation(p, nm); }
+  return {p, u};
+}
+
+const SKY_VS = `attribute vec2 aV; void main(){ gl_Position = vec4(aV,0.,1.); }`;
+const SKY_FS = FP + `
+uniform vec2 uRes; uniform float uHor; uniform float uT;
+uniform vec3 uZen, uMid, uHorC, uGlowC, uCL, uCD, uLand;
+uniform vec2 uGlow; uniform float uStars;
+uniform sampler2D uTex;
+float h21(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
+float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+  return mix(mix(h21(i),h21(i+vec2(1.,0.)),f.x), mix(h21(i+vec2(0.,1.)),h21(i+vec2(1.,1.)),f.x), f.y); }
+float fbm(vec2 p){ float s=0., a=.5; for(int i=0;i<4;i++){ s+=a*vn(p); p=p*2.03+vec2(1.7,9.2); a*=.5; } return s; }
+float gW, gE;
+vec3 sky(vec2 uv, float v, out float cl){
+  float ar = uRes.x/uRes.y;
+  vec3 c = mix(uHorC, uMid, smoothstep(0., .34, v));
+  c = mix(c, uZen, smoothstep(.2, 1., v));
+  gW = exp(-pow((uv.x-.24)*ar*1.1, 2.) - v*4.5) * uGlow.x;
+  gE = exp(-pow((uv.x-.8)*ar*1.1, 2.) - v*4.5) * uGlow.y;
+  float g = gW + gE;
+  c += uGlowC * g * .85;
+  c += uGlowC * exp(-v*30.) * .22 * (uGlow.x + uGlow.y);
+  vec2 q = vec2(uv.x*ar*1.4 + uT*.0035, v*7.5);
+  float w = fbm(q*.5 + vec2(uT*.002, 0.));
+  float nn = fbm(vec2(q.x*.8, q.y*1.6) + vec2(w*1.6, 0.));
+  float band = smoothstep(.06, .2, v) * smoothstep(.8, .38, v);
+  cl = smoothstep(.5, .74, nn) * band;
+  float lit = clamp(g*1.1 + (1.-v)*.25 + (nn-.62)*.9, 0., 1.);
+  c = mix(c, mix(uCD, uCL, lit), cl*.82);
+  return c;
+}
+void main(){
+  vec2 fc = gl_FragCoord.xy; vec2 uv = fc/uRes;
+  float hb = uHor; vec3 col; float cl;
+  if (fc.y >= hb){
+    float v = (fc.y-hb)/(uRes.y-hb);
+    col = sky(uv, v, cl);
+    vec2 cell = floor(fc/3.); float h = h21(cell);
+    if (h > .9965){
+      vec2 o = fract(fc/3.) - .5; float d = length(o);
+      float tw = .55 + .45*sin(uT*(1.5+h*3.) + h*90.);
+      col += vec3(.85,.88,1.) * smoothstep(.5,.0,d) * tw * uStars * smoothstep(.04,.4,v) * (1.-cl) * (h-.9965)*290.;
+    }
+    float m = texture2D(uTex, vec2(uv.x, 1.-uv.y)).a;
+    col = mix(col, uLand, m);
+  } else {
+    float d = hb - fc.y; float dn = d/hb;
+    float ar = uRes.x/uRes.y;
+    float persp = 1./(dn + .025);
+    vec2 wq = vec2(uv.x*ar*(4. + 30.*(1.-dn))*.35, persp*1.6 + uT*.5);
+    float wn = vn(wq)*.6 + vn(wq*vec2(2.3,1.7) + 3.1)*.4;
+    float ry = hb + d + (wn-.5)*d*.16;
+    float ox = (wn-.5)*.012*(.2+dn);
+    vec2 ruv = vec2(uv.x + ox, ry/uRes.y);
+    float v = clamp((ry-hb)/(uRes.y-hb), 0., 1.);
+    col = sky(ruv, v, cl) * .8;
+    float m = texture2D(uTex, vec2(ruv.x, 1.-ry/uRes.y)).a;
+    col = mix(col, uLand*.8, m*.92);
+    col += uGlowC * smoothstep(.72, .95, wn) * (gW+gE) * .22 * (1.-dn);
+    col *= mix(1., .5, smoothstep(0., 1., dn));
+  }
+  col += (h21(fc + fract(uT)) - .5)/255.;
+  gl_FragColor = vec4(col, 1.);
+}`;
+
+const BIRD_VS = `
+attribute vec4 aP;
+uniform vec2 uRes; uniform float uF, uCx, uHorY, uCamH, uMir, uDpr, uT;
+varying float vA; varying float vE;
+void main(){
+  float z = aP.z;
+  if (aP.w < 0. || z < 3.){ gl_Position = vec4(2.,2.,2.,1.); gl_PointSize = 0.; vA = 0.; vE = 0.; return; }
+  float e = fract(aP.w); float ph = floor(aP.w)/16.;
+  float sx = uCx + uF*aP.x/z;
+  float sy = uMir > .5 ? uHorY + uF*(aP.y + uCamH)/z : uHorY - uF*(aP.y - uCamH)/z;
+  if (uMir > .5) sx += sin(sy*.07 + uT*1.6) * 2.*uDpr * clamp((sy-uHorY)/(uRes.y-uHorY), 0., 1.);
+  float size = uF*.36/z;
+  size *= (.9 + .2*sin(uT*31. + ph*6.283)) * (1. + .85*e);
+  float a = .9; float mn = 1.7*uDpr;
+  if (size < mn){ a *= size/mn; size = mn; }
+  a = min(1., a*(1. + .5*e));
+  gl_Position = vec4(sx/uRes.x*2.-1., 1.-sy/uRes.y*2., 0., 1.);
+  gl_PointSize = size + .8*uDpr;
+  vA = a * (uMir > .5 ? .26 : 1.);
+  vE = e;
+}`;
+const BIRD_FS = FP + `
+uniform vec3 uCol; varying float vA; varying float vE;
+void main(){
+  vec2 p = gl_PointCoord - .5; float d = length(p)*2.;
+  float a = vA * smoothstep(1., .3, d);
+  gl_FragColor = vec4(uCol*(1.-.35*vE), a);
+}`;
+
+let skyP, birdP, triBuf, birdBuf, landTex, birdData, skyA, birdA;
+if (gl) try {
+  skyP = program(SKY_VS, SKY_FS);
+  birdP = program(BIRD_VS, BIRD_FS);
+  triBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, triBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  skyA = gl.getAttribLocation(skyP.p, 'aV'); birdA = gl.getAttribLocation(birdP.p, 'aP');
+  birdData = new Float32Array(NMAX*4);
+  birdBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, birdBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, birdData.byteLength, gl.DYNAMIC_DRAW);
+  landTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, landTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+} catch (err) { gl = null; }
+if (!gl) glc.style.display = 'none';
+
+// ---------- landmarks (far shore silhouettes) ----------
+const landCanvas = document.createElement('canvas');
+function drawLand(){
+  const c = landCanvas, x = c.getContext('2d');
+  c.width = Math.max(1, Math.round(W*DPR)); c.height = Math.max(1, Math.round(H*DPR));
+  x.setTransform(DPR,0,0,DPR,0,0);
+  x.clearRect(0,0,W,H);
+  x.fillStyle = '#fff'; x.strokeStyle = '#fff';
+  const u = Math.max(H, W*0.6) / 900;     // scale unit
+  const y0 = HOR + 0.5;
+  // far bank: low hedges and copses
+  x.beginPath(); x.moveTo(0, y0+1);
+  for (let px = 0; px <= W; px += 3){
+    const k = px / W;
+    let h = 1.6*u + 1.2*u*Math.sin(px*0.013) + 0.8*u*Math.sin(px*0.051+1.3);
+    h += 5*u*Math.max(0, Math.sin(px*0.007+2.1)) ** 6 + 3*u*Math.max(0, Math.sin(px*0.023)) ** 8;
+    if (k > .63 && k < .66) h += 2*u;
+    x.lineTo(px, y0 - Math.max(0.6, h));
+  }
+  x.lineTo(W, y0+1); x.closePath(); x.fill();
+
+  // cathedral on its island of higher ground (the ship of the fens)
+  const cx = W*0.68, s = 1.05*u;
+  x.beginPath();
+  x.rect(cx - 30*s, y0 - 9*s, 58*s, 9*s);                 // nave
+  x.rect(cx - 36*s, y0 - 26*s, 9*s, 26*s);                // west tower
+  x.rect(cx - 37.5*s, y0 - 31*s, 2.2*s, 6*s); x.rect(cx - 28.7*s, y0 - 31*s, 2.2*s, 6*s);
+  x.rect(cx - 34.2*s, y0 - 33*s, 5.4*s, 8*s);              // tower top stage
+  x.rect(cx + 4*s, y0 - 14*s, 10*s, 14*s);                // octagon
+  x.moveTo(cx + 3.5*s, y0 - 14*s); x.lineTo(cx + 9*s, y0 - 20*s); x.lineTo(cx + 14.5*s, y0 - 14*s); // lantern roof
+  x.rect(cx + 7.6*s, y0 - 23*s, 2.8*s, 5*s);              // lantern
+  x.rect(cx + 24*s, y0 - 12*s, 3*s, 12*s); x.rect(cx - 2*s, y0 - 11*s, 3*s, 11*s);
+  x.fill();
+  // a few trees around it
+  for (let i = 0; i < 7; i++){
+    const tx = cx - 48*s + i*16*s + Math.sin(i*7.1)*5*s, r = (3 + (i%3)*1.4)*s;
+    x.beginPath(); x.ellipse(tx, y0 - r*0.9, r*1.2, r, 0, 0, Math.PI*2); x.fill();
+  }
+
+  // pylons marching in from the left, receding
+  const pylons = [];
+  for (let i = 0; i < 6; i++){
+    const t = i/5;
+    const px = W*(0.035 + 0.43*Math.pow(t, 0.8));
+    const ph = (70 - 52*Math.pow(t, 0.55)) * u;
+    pylons.push([px, ph]);
+  }
+  x.lineCap = 'round';
+  for (const [px, ph] of pylons){
+    const lw = Math.max(0.6, ph/90);
+    x.lineWidth = lw;
+    const base = ph*0.13, top = ph*0.03;
+    x.beginPath();
+    x.moveTo(px - base, y0); x.lineTo(px - top, y0 - ph*0.86); x.lineTo(px, y0 - ph);
+    x.moveTo(px + base, y0); x.lineTo(px + top, y0 - ph*0.86); x.lineTo(px, y0 - ph);
+    // lattice
+    for (let k = 0; k < 6; k++){
+      const a = k/6, b = (k+1)/6;
+      const wa = base + (top-base)*a, wb = base + (top-base)*b;
+      x.moveTo(px - wa, y0 - ph*0.86*a); x.lineTo(px + wb, y0 - ph*0.86*b);
+      x.moveTo(px + wa, y0 - ph*0.86*a); x.lineTo(px - wb, y0 - ph*0.86*b);
+    }
+    // cross arms
+    for (const [h, w] of [[0.62, 0.3],[0.74, 0.36],[0.86, 0.28]]){
+      x.moveTo(px - w*ph*0.5, y0 - ph*h); x.lineTo(px + w*ph*0.5, y0 - ph*h);
+    }
+    x.stroke();
+  }
+  // wires
+  x.lineWidth = Math.max(0.5, 0.45*u);
+  x.globalAlpha = 0.75;
+  for (let i = 0; i < pylons.length - 1; i++){
+    const [ax, ah] = pylons[i], [bx, bh] = pylons[i+1];
+    for (const [h, w] of [[0.62, 0.3],[0.74, 0.36],[0.86, 0.28]]){
+      for (const sgn of [-1, 1]){
+        const x1 = ax + sgn*w*ah*0.5, y1 = y0 - ah*h, x2 = bx + sgn*w*bh*0.5, y2 = y0 - bh*h;
+        const sag = (x2-x1)*0.05 + ah*0.05;
+        x.beginPath(); x.moveTo(x1, y1); x.quadraticCurveTo((x1+x2)/2, (y1+y2)/2 + sag, x2, y2); x.stroke();
+      }
+    }
+  }
+  x.globalAlpha = 1;
+  // drainage windpump far right
+  const wx = W*0.9, wh = 15*u;
+  x.lineWidth = Math.max(0.7, u*0.8);
+  x.beginPath(); x.moveTo(wx - 3*u, y0); x.lineTo(wx - 1*u, y0 - wh); x.lineTo(wx + 1*u, y0 - wh); x.lineTo(wx + 3*u, y0); x.closePath(); x.fill();
+  x.beginPath();
+  for (let k = 0; k < 4; k++){ const a = k*Math.PI/2 + 0.35; x.moveTo(wx, y0 - wh); x.lineTo(wx + Math.cos(a)*8*u, y0 - wh + Math.sin(a)*8*u); }
+  x.stroke();
+  // willows
+  for (const [k, r] of [[0.53, 4.5],[0.555, 3.2],[0.82, 4],[0.97, 5]]){
+    x.beginPath(); x.ellipse(W*k, y0 - r*u*0.8, r*u*1.3, r*u, 0, 0, Math.PI*2); x.fill();
+  }
+  if (gl){
+    gl.bindTexture(gl.TEXTURE_2D, landTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+  }
+}
+
+
+// ---------- the reed island (roost) ----------
+const isle = [];
+for (let k = 0, N = (coarse || smallScreen) ? 600 : 1300; k < N; k++){
+  const a = Math.random()*6.283, r = Math.sqrt(Math.random());
+  isle.push({X: -5 + Math.cos(a)*r*53, Z: 178 + Math.sin(a)*r*27, h: (2.7 + Math.random()*1.5)*(1 - r*r*.35), ph: Math.random()*6.28});
+}
+isle.sort((a, b) => b.Z - a.Z);
+function isleTop(a){ return (1.1 + .3*Math.sin(a*9.1) + .2*Math.sin(a*23.7 + 1))*(.2 + .8*Math.sqrt(Math.abs(Math.sin(a)))); }
+function drawIsland(t, ink, mirror){
+  const sgn = mirror ? -1 : 1;
+  const P2 = (X, Y, Z) => [CX + F*X/Z, HOR - F*(sgn*Y - CAMH)/Z];
+  fg.fillStyle = ink; fg.strokeStyle = ink;
+  fg.beginPath();
+  for (let k = 0; k <= 32; k++){
+    const a = k/32*Math.PI;
+    const [x, y] = P2(-5 + Math.cos(a)*53, mirror ? 0 : isleTop(a), 178 + Math.sin(a)*27);
+    k ? fg.lineTo(x, y) : fg.moveTo(x, y);
+  }
+  for (let k = 0; k <= 32; k++){
+    const a = Math.PI + k/32*Math.PI;
+    const [x, y] = P2(-5 + Math.cos(a)*53, mirror ? isleTop(a)*1.1 : 0, 178 + Math.sin(a)*27);
+    fg.lineTo(x, y);
+  }
+  fg.closePath(); fg.fill();
+  // stems and plumes, swaying in gusts that roll across the bed
+  fg.lineWidth = Math.max(.6, F*.03/178); fg.lineCap = 'round';
+  fg.beginPath();
+  const plumes = new Path2D();
+  for (const s of isle){
+    if (mirror && s.Z > 178) continue;
+    const g = Math.sin(t*.7 - s.X*.06 + s.ph*.2)*.5 + Math.sin(t*1.9 + s.ph)*.12;
+    const top = s.h, lean = .28*g + .12;
+    const [bx, by] = P2(s.X, .5, s.Z), [tx, ty] = P2(s.X + lean, top, s.Z);
+    const [mx, my] = P2(s.X + lean*.2, top*.6, s.Z);
+    fg.moveTo(bx, by); fg.quadraticCurveTo(mx, my, tx, ty);
+    const pl = F*.32/s.Z;
+    plumes.ellipse(tx + pl*(.25 + .2*g), ty + sgn*pl*.35, pl*.18, pl*.55, .8 + .3*g, 0, 6.283);
+  }
+  fg.stroke(); fg.fill(plumes);
+}
+
+// ---------- foreground reeds ----------
+let reeds = [];
+function rnd(a, b){ return a + Math.random()*(b-a); }
+function layoutReeds(){
+  reeds = [];
+  const count = Math.round(Math.min(220, W/5));
+  for (let i = 0; i < count; i++){
+    // denser at the edges, a gap in the middle so the water reads
+    let k = Math.random();
+    k = k < .5 ? Math.pow(k*2, 1.6)/2 : 1 - Math.pow((1-k)*2, 1.6)/2;
+    const edge = Math.abs(k - .5)*2;
+    const hgt = H*(0.06 + 0.22*Math.pow(edge, 1.8) + rnd(0, .07));
+    reeds.push({x: k*W + rnd(-8,8), h: hgt, lean: rnd(-.12, .12), ph: rnd(0, 6.28),
+      plume: Math.random() < .7, leaf: rnd(.3, .7), lw: rnd(1, 2.1)});
+  }
+  reeds.sort((a, b) => a.h - b.h);
+}
+
+// ---------- flock ----------
+const px = new Float32Array(NMAX), py = new Float32Array(NMAX), pz = new Float32Array(NMAX);
+let vx = new Float32Array(NMAX), vy = new Float32Array(NMAX), vz = new Float32Array(NMAX);
+let nvx = new Float32Array(NMAX), nvy = new Float32Array(NMAX), nvz = new Float32Array(NMAX);
+const tt = new Float32Array(NMAX).fill(-99);      // agitation trigger time
+const ex = new Float32Array(NMAX);                 // agitation level 0..1
+const phase = new Uint8Array(NMAX);
+for (let i = 0; i < NMAX; i++) phase[i] = (Math.random()*16)|0;
+
+const K = 7;                     // topological neighbours
+const CS = 9;                    // grid cell, metres
+const HB = 15, HS = 1 << HB, HM = HS - 1;
+const cStart = new Int32Array(HS + 1), cFill = new Int32Array(HS), sorted = new Int32Array(NMAX), bh = new Int32Array(NMAX);
+const nd = new Float32Array(K), ni = new Int32Array(K);
+const nbr = new Int32Array(NMAX*K), nbrK = new Uint8Array(NMAX);
+let parity = 0;
+function hash(ix, iy, iz){ return (Math.imul(ix, 73856093) ^ Math.imul(iy, 19349663) ^ Math.imul(iz, 83492791)) & HM; }
+
+let LEVEL = .8, BANK = .25, FLOW = 4.5;
+const P = { V0: reduced ? 11 : 14, VMIN: 8, VMAX: 24, WA: 1.9, WC: .38, WS: 40, SEP: 6, WH: 5, HR: 55, YLO: 45, YHI: 150 };
+let homeX = 0, homeZ = 480;
+let simT = 0;
+
+function seed(){
+  // start mid-wheel: a long, curling sheet of birds
+  for (let i = 0; i < NMAX; i++){
+    const a = Math.random(), b = Math.random()*2 - 1, c = (Math.random() + Math.random() - 1);
+    const ang = -1.2 + a*2.6;
+    const R = 75 + b*22;
+    px[i] = -20 + Math.cos(ang)*R*1.3; pz[i] = 470 + Math.sin(ang)*R*.7;
+    py[i] = 85 + 20*Math.sin(a*5 + b) + c*7 + b*8;
+    vx[i] = -Math.sin(ang)*13; vz[i] = Math.cos(ang)*13*.7; vy[i] = rnd(-.5, .5);
+  }
+}
+
+const falcons = [];   // {sx, sy, a, r}
+
+// ---------- the evening: dusk, roost, night, dawn ----------
+const CYCLE = 300;                                   // seconds for one turn of the day
+const ISX = -5, ISZ = 178, IRX = 52, IRZ = 26;       // the reed island they roost in
+const state = new Uint8Array(NMAX);                  // 0 flying, 1 going down, 2 roosting, 3 lifting
+const rX = new Float32Array(NMAX), rY = new Float32Array(NMAX), rZ = new Float32Array(NMAX);
+const rank = new Float32Array(NMAX), lrank = new Float32Array(NMAX), lt = new Float32Array(NMAX);
+for (let i = 0; i < NMAX; i++){
+  const a = Math.random()*6.283, r = Math.sqrt(Math.random())*.92;
+  rX[i] = ISX + Math.cos(a)*r*IRX; rZ[i] = ISZ + Math.sin(a)*r*IRZ; rY[i] = .8 + Math.random()*1.6;
+  lrank[i] = r*.8 + Math.random()*.2;               // dawn departures go out in rings
+}
+let cyc = 0, roostRanked = false, roosted = 0, flying = NMAX;
+let activity = 0, nearness = 0, meanX = 0;           // for the sound
+let flockSX = 0, flockSY = 0;                        // where the flock sits on screen
+function smooth(a, b, x){ x = Math.min(1, Math.max(0, (x-a)/(b-a))); return x*x*(3-2*x); }
+function roostness(u){ return u < .9 ? smooth(.4, .53, u) : 1 - smooth(.9, 1, u); }
+
+function step(dt){
+  simT += dt;
+  const t = simT, u = cyc, w = roostness(u);
+  const hX = 70*Math.sin(t*.043) + 25*Math.sin(t*.11), hZ = 490 + 70*Math.sin(t*.031 + 1);
+  homeX = hX + (ISX + 15*Math.sin(t*.2) - hX)*w;
+  homeZ = hZ + (ISZ + 160 - hZ)*w;
+  const {V0, WA, WC, WS, SEP, WH, YHI} = P;
+  const YMID = 105 - 55*w, YLO = P.YLO - 22*w, HR = P.HR*(1 - .3*w);
+  const inRoost = u >= .53 && u < .86, rp = (u - .53)/.07, lp = (u - .86)/.04;
+  if (inRoost && !roostRanked){
+    // the end of the flock nearest the reeds peels off first, low birds before high ones
+    let mn = 1e9, mx = -1e9;
+    for (let i = 0; i < n; i++){ const d = Math.hypot(px[i]-ISX, pz[i]-ISZ) + py[i]*.6; rank[i] = d; if (d < mn) mn = d; if (d > mx) mx = d; }
+    for (let i = 0; i < n; i++) rank[i] = (rank[i]-mn)/(mx-mn+1e-6)*.78 + Math.random()*.22;
+    roostRanked = true;
+  }
+  if (u < .5) roostRanked = false;
+
+  for (let i = 0; i < n; i++){
+    const a = t - tt[i];
+    ex[i] = state[i] === 2 ? 0 : a < .12 ? a/.12 : Math.max(0, 1 - (a-.12)/.55);
+  }
+  // spatial hash over the birds still in the air
+  cFill.fill(0);
+  for (let i = 0; i < n; i++){
+    if (state[i] === 2){ bh[i] = -1; continue; }
+    const h = hash(Math.floor(px[i]/CS), Math.floor(py[i]/CS), Math.floor(pz[i]/CS));
+    bh[i] = h; cFill[h]++;
+  }
+  cStart[0] = 0;
+  for (let h = 0; h < HS; h++){ cStart[h+1] = cStart[h] + cFill[h]; cFill[h] = cStart[h]; }
+  for (let i = 0; i < n; i++) if (bh[i] >= 0) sorted[cFill[bh[i]]++] = i;
+
+  const R2 = CS*CS;
+  parity ^= 1;
+  const nf = falcons.length;
+  let act = 0, near = 0, sumX = 0, sumY = 0, fly = 0, rst = 0;
+
+  for (let i = 0; i < n; i++){
+    let st = state[i];
+    if (st === 2){
+      if (u >= .86 && (lp > lrank[i] || u >= .9)){
+        st = state[i] = 3; lt[i] = t;
+        const ox = px[i]-ISX, oz = pz[i]-ISZ, od = Math.hypot(ox, oz) + 1e-3;
+        vx[i] = ox/od*5 + rnd(-2, 2); vy[i] = 7 + Math.random()*6; vz[i] = oz/od*5 + rnd(-2, 2);
+      } else { nvx[i] = nvy[i] = nvz[i] = 0; rst++; continue; }
+    }
+    if (st === 0 && inRoost && (rp*1.12 > rank[i] || u > .62)) st = state[i] = 1;
+    const x = px[i], y = py[i], z = pz[i];
+    const nb = i*K;
+    let k;
+    if ((i & 1) === parity){
+      // topological neighbours: the 7 nearest, searched in the 2x2x2 block of cells around the bird
+      const fx = x/CS, fy = y/CS, fz = z/CS;
+      const ix = Math.floor(fx), iy = Math.floor(fy), iz = Math.floor(fz);
+      const ox = fx - ix < .5 ? -1 : 1, oy = fy - iy < .5 ? -1 : 1, oz = fz - iz < .5 ? -1 : 1;
+      k = 0; let budget = 56;
+      for (let c = 0; c < 8 && budget > 0; c++){
+        const h = hash(ix + (c & 1 ? ox : 0), iy + (c & 2 ? oy : 0), iz + (c & 4 ? oz : 0));
+        const s0 = cStart[h], e = Math.min(cStart[h+1], s0 + budget);
+        budget -= e - s0;
+        for (let s = s0; s < e; s++){
+          const j = sorted[s]; if (j === i) continue;
+          const ax = px[j]-x, ay = py[j]-y, az = pz[j]-z;
+          const d2 = ax*ax + ay*ay + az*az;
+          if (d2 > R2) continue;
+          if (k === K && d2 >= nd[K-1]) continue;
+          let p = k < K ? k++ : K-1;
+          while (p > 0 && nd[p-1] > d2){ nd[p] = nd[p-1]; ni[p] = ni[p-1]; p--; }
+          nd[p] = d2; ni[p] = j;
+        }
+      }
+      for (let m = 0; m < k; m++) nbr[nb+m] = ni[m];
+      nbrK[i] = k;
+    } else k = nbrK[i];
+    const ux = vx[i], uy = vy[i], uz = vz[i];
+    let alx = 0, aly = 0, alz = 0, cox = 0, coy = 0, coz = 0, sx = 0, sy = 0, sz = 0, emax = 0;
+    if (k > 0){
+      let mx = 0, my = 0, mz = 0, wx = 0, wy = 0, wz = 0;
+      for (let m = 0; m < k; m++){
+        const j = nbr[nb+m];
+        const qx = px[j], qy = py[j], qz = pz[j];
+        mx += qx; my += qy; mz += qz;
+        wx += vx[j]; wy += vy[j]; wz += vz[j];
+        const d = Math.sqrt((qx-x)*(qx-x) + (qy-y)*(qy-y) + (qz-z)*(qz-z));
+        if (d < SEP && d > 1e-3){ const ww = (SEP-d)/(SEP*d); sx += (x-qx)*ww; sy += (y-qy)*ww; sz += (z-qz)*ww; }
+        if (ex[j] > emax) emax = ex[j];
+      }
+      const inv = 1/k, cw = WC*(k/K);
+      alx = (wx*inv-ux)*WA; aly = (wy*inv-uy)*WA; alz = (wz*inv-uz)*WA;
+      cox = (mx*inv-x)*cw; coy = (my*inv-y)*cw; coz = (mz*inv-z)*cw;
+    }
+    let ax, ay, az, vmin = P.VMIN, vmax = P.VMAX;
+    if (st === 1){
+      // going down: a spiralling rush into the reeds
+      const tx = rX[i]-x, ty = rY[i]-y, tz = rZ[i]-z;
+      const td = Math.sqrt(tx*tx + ty*ty + tz*tz) + 1e-3, hd = Math.hypot(tx, tz);
+      if (td < 2.5 || (ty > -.3 && hd < 6)){
+        state[i] = 2; px[i] = rX[i]; py[i] = rY[i]; pz[i] = rZ[i];
+        nvx[i] = nvy[i] = nvz[i] = 0; rst++; continue;
+      }
+      const vd = Math.min(27, 8 + td*.12);
+      const cxv = ISX - x, czv = ISZ - z, cd = Math.hypot(cxv, czv) + 1e-3;
+      const sw = Math.min(1, hd/50) * Math.min(1, Math.max(0, (y-10)/40)) * 10;
+      const steep = hd < 40 ? 1.5 : .9;
+      ax = (tx/td*vd - czv/cd*sw - ux)*2.6 + alx*.5 + sx*WS;
+      ay = (ty/td*vd*steep - uy)*2.6 + aly*.5 + sy*WS;
+      az = (tz/td*vd + cxv/cd*sw - uz)*2.6 + alz*.5 + sz*WS;
+      vmin = 3; vmax = 28;
+    } else {
+      ax = alx + cox + sx*WS; ay = aly + coy + sy*WS; az = alz + coz + sz*WS;
+      if (st === 3){
+        ay += (11 - uy)*1.6; vmin = 4;
+        if (t - lt[i] > 3 || y > 35) state[i] = 0;
+      } else {
+        // the pull of the roost keeps the flock wheeling over one stretch of fen
+        const hx = homeX - x, hz = homeZ - z, hd = Math.sqrt(hx*hx + hz*hz);
+        if (hd > HR){ const s = WH*(hd-HR)/(HR*hd); ax += hx*s; az += hz*s; }
+        if (y < YLO) ay += (YLO-y)*.5; else if (y > YHI) ay -= (y-YHI)*.4;
+        // starlings like level flight, and lose height as they bank into a turn
+        const hs = Math.sqrt(ux*ux + uz*uz) + 1e-6;
+        const lat = Math.abs((ax*uz - az*ux)/hs);
+        ay -= uy*LEVEL + lat*BANK - (YMID - y)*.03;
+        // slow, flock-sized gusts of intent: one wing of the flock turns before the other
+        ax += FLOW*Math.sin(.021*y + .7*Math.sin(.013*z + t*.11) + t*.07);
+        ay += FLOW*.35*Math.sin(.017*z + .5*Math.sin(.02*x - t*.05) + t*.09);
+        az += FLOW*Math.sin(.019*x + .7*Math.sin(.015*y - t*.08) + t*.05);
+      }
+      const sp = Math.sqrt(ux*ux + uy*uy + uz*uz) + 1e-6;
+      const ds = (V0-sp)/sp*1.4; ax += ux*ds; ay += uy*ds; az += uz*ds;
+    }
+    // peregrine: it hunts along the view ray, so test against a cylinder through the screen point
+    let trig = false;
+    for (let f = 0; f < nf; f++){
+      const fc = falcons[f]; if (fc.a <= .01) continue;
+      const fx = (fc.sx - CX)*z/F, fy = CAMH + (HOR - fc.sy)*z/F;
+      const dx = x - fx, dy = y - fy, d2 = dx*dx + dy*dy;
+      const R = fc.r*z/F;
+      if (d2 < R*R){
+        const d = Math.sqrt(d2) + .01, q = 1 - d/R;
+        const s = 70*q*fc.a/d;
+        ax += dx*s; ay += dy*s - 18*q*fc.a;
+        if (q > .3) trig = true;
+      }
+    }
+    const me = ex[i];
+    if (t - tt[i] > 1.5 && (trig || emax > .55)) tt[i] = t;
+    ay -= me*7;
+    ax += (Math.random()-.5)*2; ay += (Math.random()-.5)*1.2; az += (Math.random()-.5)*2;
+
+    let nx = ux + ax*dt, ny = uy + ay*dt, nz = uz + az*dt;
+    const ns = Math.sqrt(nx*nx + ny*ny + nz*nz) + 1e-6;
+    const cl = ns < vmin ? vmin/ns : ns > vmax ? vmax/ns : 1;
+    nx *= cl; ny *= cl; nz *= cl;
+    nvx[i] = nx; nvy[i] = ny; nvz[i] = nz;
+    // how much wing is moving, and how close: drives the whoosh
+    const turn = Math.abs(nx-ux) + Math.abs(ny-uy) + Math.abs(nz-uz);
+    const prox = 160/z;
+    act += (turn/dt*.04 + me + (st === 1 ? .8 : 0)) * prox*prox;
+    near += prox*prox; sumX += x/z; sumY += (y-CAMH)/z; fly++;
+  }
+  let tmp;
+  tmp = vx; vx = nvx; nvx = tmp; tmp = vy; vy = nvy; nvy = tmp; tmp = vz; vz = nvz; nvz = tmp;
+  for (let i = 0; i < n; i++){ px[i] += vx[i]*dt; py[i] += vy[i]*dt; pz[i] += vz[i]*dt; }
+  roosted = rst; flying = fly;
+  activity = act/NMAX; nearness = near/NMAX; meanX = fly ? sumX/fly*F/(W*.5) : 0;
+  if (fly){ flockSX = CX + F*sumX/fly; flockSY = HOR - F*sumY/fly; }
+  // the odd nervous bird starts a wave on its own
+  if (fly > 50 && !reduced && Math.random() < dt*.35){
+    const j = (Math.random()*n)|0; if (state[j] === 0) tt[j] = t;
+  }
+}
+
+// ---------- falcons ----------
+const user = {sx: 0, sy: 0, x: 0, y: 0, vx: 0, vy: 0, a: 0, r: 90, on: false, last: -1e9};
+const autos = [
+  {sx: 0, sy: 0, x: -200, y: -200, vx: 0, vy: 0, a: 0, r: 110, pass: null},
+  {sx: 0, sy: 0, x: -200, y: -200, vx: 0, vy: 0, a: 0, r: 100, pass: null}   // a mate, wallpaper only
+];
+falcons.push(user, autos[0], autos[1]);
+let lastInput = -1e9;
+let nextPass = (WALL ? 9 : 14) * 1000;
+
+function pointer(e){
+  user.sx = e.clientX; user.sy = e.clientY; user.on = true; user.last = lastInput = performance.now();
+  wake();
+}
+stage.addEventListener('pointermove', pointer);
+stage.addEventListener('pointerdown', e => { if (user.a < .05){ user.x = e.clientX; user.y = e.clientY - 80; user.vx = user.vy = 0; } pointer(e); });
+stage.addEventListener('pointerup', e => { if (e.pointerType !== 'mouse') user.on = false; });
+stage.addEventListener('pointerleave', () => { user.on = false; });
+stage.addEventListener('pointercancel', () => { user.on = false; });
+
+function updateFalcon(fc, dt){
+  // the falcon chases the pointer with a little lag, like a bird and not a cursor
+  const k = 60, dmp = 2*Math.sqrt(k)*.9;
+  fc.vx += ((fc.sx - fc.x)*k - fc.vx*dmp)*dt;
+  fc.vy += ((fc.sy - fc.y)*k - fc.vy*dmp)*dt;
+  fc.x += fc.vx*dt; fc.y += fc.vy*dt;
+}
+
+// an autonomous pass: in high, stoop through the flock, throw up and away
+function startPass(fc, delay = 0, mate = null){
+  const side = mate ? -mate.pass.side : (Math.random() < .5 ? -1 : 1);
+  const sx = side < 0 ? -80 : W + 80, sy = rnd(-80, H*.12);
+  const mx = (flockSX || W*.5) + rnd(-W*.06, W*.06), my = (flockSY || HOR*.5) + rnd(-H*.05, H*.05);
+  const ex = side < 0 ? W + 80 : -80, ey = Math.min(HOR - 30, my + rnd(-H*.25, H*.1));
+  fc.pass = {side, t: -delay, dur: rnd(4.2, 6), S: [sx, sy], C: [2*mx - (sx+ex)/2, 2*my - (sy+ey)/2], E: [ex, ey]};
+  fc.x = sx; fc.y = sy; fc.vx = fc.vy = 0;
+}
+function runPass(fc, dt){
+  const p = fc.pass;
+  if (!p){ fc.a = Math.max(0, fc.a - dt*2); return; }
+  p.t += dt;
+  if (p.t < 0){ fc.a = 0; return; }
+  let q = p.t/p.dur;
+  if (q >= 1){ fc.pass = null; fc.a = 0; return; }
+  q = q < .5 ? 2*q*q*.8 + q*.2 : q;                   // slow entry, fast stoop
+  const iq = 1 - q;
+  const x = iq*iq*p.S[0] + 2*iq*q*p.C[0] + q*q*p.E[0];
+  const y = iq*iq*p.S[1] + 2*iq*q*p.C[1] + q*q*p.E[1];
+  fc.vx = (x - fc.x)/Math.max(dt, 1e-3); fc.vy = (y - fc.y)/Math.max(dt, 1e-3);
+  fc.x = fc.sx = x; fc.y = fc.sy = y;
+  fc.a = Math.min(1, p.t*2, (p.dur - p.t)*2);
+}
+function sendFalcon(){
+  if (autos[0].pass) return;
+  startPass(autos[0]);
+  if (WALL && Math.random() < .45) startPass(autos[1], rnd(.6, 1.6), autos[0]);
+}
+
+function drawFalcon(fc, ink, t){
+  if (fc.a < .02) return;
+  const sp = Math.hypot(fc.vx, fc.vy);
+  const ang = sp > 20 ? Math.atan2(fc.vy, fc.vx) : (fc.ang ?? -0.3);
+  fc.ang = ang;
+  const L = Math.max(16, Math.min(W, H)*0.028);
+  const tuck = Math.min(1, sp/900);                  // stoop folds the wings
+  const flap = sp < 250 ? Math.sin(t*14) : Math.sin(t*5)*.2;
+  const span = L*(1.0 - .45*tuck)*(.78 + .22*flap);
+  const sweep = .2 + .5*tuck;
+  fg.save(); fg.translate(fc.x, fc.y); fg.rotate(ang); fg.globalAlpha = fc.a;
+  fg.fillStyle = ink;
+  fg.beginPath();
+  fg.moveTo(L*.5, 0);
+  fg.quadraticCurveTo(L*.42, -L*.08, L*.22, -L*.09);
+  fg.quadraticCurveTo(L*.05 - sweep*L*.3, -span*.6, -sweep*L*.8, -span);
+  fg.quadraticCurveTo(-L*.05, -span*.45, -L*.12, -L*.08);
+  fg.lineTo(-L*.42, -L*.06); fg.lineTo(-L*.5, -L*.1); fg.lineTo(-L*.55, 0); fg.lineTo(-L*.5, L*.1); fg.lineTo(-L*.42, L*.06);
+  fg.lineTo(-L*.12, L*.08);
+  fg.quadraticCurveTo(-L*.05, span*.45, -sweep*L*.8, span);
+  fg.quadraticCurveTo(L*.05 - sweep*L*.3, span*.6, L*.22, L*.09);
+  fg.quadraticCurveTo(L*.42, L*.08, L*.5, 0);
+  fg.fill();
+  fg.restore(); fg.globalAlpha = 1;
+}
+
+// ---------- drawing ----------
+function rgb(c, m = 1){ return `rgb(${Math.round(c[0]*255*m)},${Math.round(c[1]*255*m)},${Math.round(c[2]*255*m)})`; }
+
+function drawReeds(t, ink){
+  fg.strokeStyle = ink; fg.fillStyle = ink; fg.lineCap = 'round';
+  for (const r of reeds){
+    const sw = Math.sin(t*0.9 + r.ph + r.x*0.004)*0.6 + Math.sin(t*2.1 + r.ph*2)*0.25;
+    const bx = r.x, by = H + 4;
+    const tx = bx + (r.lean + sw*0.05)*r.h, ty = by - r.h;
+    fg.lineWidth = r.lw;
+    fg.beginPath(); fg.moveTo(bx, by); fg.quadraticCurveTo(bx + (tx-bx)*.2, by - r.h*.55, tx, ty); fg.stroke();
+    // a drooping leaf
+    const lx = bx + (tx-bx)*r.leaf*.5, ly = by - r.h*r.leaf;
+    const dir = r.ph > 3.14 ? 1 : -1;
+    fg.lineWidth = r.lw*1.4;
+    fg.beginPath(); fg.moveTo(lx, ly); fg.quadraticCurveTo(lx + dir*r.h*.16, ly - r.h*.08, lx + dir*r.h*(.22 + sw*.02), ly + r.h*.05); fg.stroke();
+    if (r.plume){
+      // phragmites plumes droop downwind as a loose fan of strands
+      const lean = .65 + sw*.35, pl = r.h*.12;
+      fg.lineWidth = Math.max(.8, r.lw*.6);
+      fg.beginPath();
+      for (let k = 0; k < 6; k++){
+        const f = k/5;
+        fg.moveTo(tx, ty);
+        fg.quadraticCurveTo(tx + pl*(.3 + .2*f)*lean, ty - pl*.12 + f*pl*.2, tx + pl*(.5 + .3*f)*lean, ty + pl*(.2 + .6*f));
+      }
+      fg.stroke();
+    }
+  }
+}
+
+
+// ---------- status line ----------
+const statusEl = document.getElementById('status');
+const LINES = [
+  [0,   'Starlings over the fen at dusk. You are the falcon.'],
+  [.3,  'The light is going and the flock is gathering.'],
+  [.53, 'Now they pour down into the reeds.'],
+  [.63, 'Roosting until first light.'],
+  [.86, 'First light. They lift off the reeds in rings.'],
+  [.93, 'Out over the fen again.']
+];
+let lineIdx = -1;
+function setStatus(u){
+  let i = 0; while (i < LINES.length - 1 && u >= LINES[i+1][0]) i++;
+  if (i !== lineIdx){ lineIdx = i; statusEl.textContent = LINES[i][1]; }
+}
+
+// ---------- sound: wings and roost chatter, built from noise and oscillators ----------
+let AC = null, A = null, soundOn = false;
+function initAudio(){
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return false;
+  AC = new Ctx();
+  const master = AC.createGain(); master.gain.value = 0;
+  const comp = AC.createDynamicsCompressor();
+  master.connect(comp); comp.connect(AC.destination);
+  // two seconds of pink noise, the raw material for wings and wind
+  const len = AC.sampleRate*2, buf = AC.createBuffer(1, len, AC.sampleRate), d = buf.getChannelData(0);
+  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0;
+  for (let i = 0; i < len; i++){
+    const w = Math.random()*2 - 1;
+    b0 = .99886*b0 + w*.0555179; b1 = .99332*b1 + w*.0750759; b2 = .969*b2 + w*.153852;
+    b3 = .8665*b3 + w*.3104856; b4 = .55*b4 + w*.5329522; b5 = -.7616*b5 - w*.016898;
+    d[i] = (b0+b1+b2+b3+b4+b5 + w*.5362)*.11;
+  }
+  const src = (rate) => { const s = AC.createBufferSource(); s.buffer = buf; s.loop = true; s.playbackRate.value = rate; s.start(0, Math.random()*2); return s; };
+  const pan = AC.createStereoPanner ? AC.createStereoPanner() : null;
+  const out = pan || master; if (pan) pan.connect(master);
+  // the whoosh of thousands of wings
+  const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 600; bp.Q.value = .55;
+  const wg = AC.createGain(); wg.gain.value = 0;
+  src(1).connect(bp); bp.connect(wg); wg.connect(out);
+  // the flutter on top: bright noise pulsed at a wingbeat rate
+  const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2400;
+  const am = AC.createGain(); am.gain.value = .5;
+  const lfo = AC.createOscillator(); lfo.frequency.value = 15; const lg = AC.createGain(); lg.gain.value = .5;
+  lfo.connect(lg); lg.connect(am.gain); lfo.start();
+  const fl = AC.createGain(); fl.gain.value = 0;
+  src(1.13).connect(hp); hp.connect(am); am.connect(fl); fl.connect(out);
+  // wind over the fen
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 320;
+  const wind = AC.createGain(); wind.gain.value = .05;
+  src(.71).connect(lp); lp.connect(wind); wind.connect(master);
+  // a bus for the roost, a little muffled by distance and reeds
+  const chat = AC.createBiquadFilter(); chat.type = 'lowpass'; chat.frequency.value = 6200;
+  const cg = AC.createGain(); cg.gain.value = .9; chat.connect(cg); cg.connect(master);
+  A = {master, pan, bp, wg, fl, lfo, wind, chat, buf};
+  return true;
+}
+function chirp(t0){
+  const c = AC, kind = Math.random();
+  const g = c.createGain(); g.gain.value = 0;
+  let node = g;
+  if (c.createStereoPanner){ const p = c.createStereoPanner(); p.pan.value = rnd(-.85, .85); g.connect(p); node = p; }
+  node.connect(A.chat);
+  const vol = rnd(.012, .05);
+  if (kind < .45){
+    // a whistle that slides
+    const o = c.createOscillator(); o.type = 'sine';
+    const f0 = rnd(1800, 5200), dur = rnd(.05, .2);
+    o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(f0*rnd(.55, 1.6), t0 + dur);
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(vol, t0 + .008); g.gain.exponentialRampToValueAtTime(1e-4, t0 + dur);
+    o.connect(g); o.start(t0); o.stop(t0 + dur + .02);
+  } else if (kind < .8){
+    // a dry rattle of clicks
+    const o = c.createOscillator(); o.type = 'square'; o.frequency.value = rnd(1400, 3200);
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = rnd(2500, 4500); bp.Q.value = 2;
+    const reps = 3 + (Math.random()*7|0), gap = rnd(.022, .045);
+    g.gain.setValueAtTime(0, t0);
+    for (let r = 0; r < reps; r++){
+      const tr = t0 + r*gap;
+      g.gain.setValueAtTime(vol*.7, tr); g.gain.setValueAtTime(0, tr + .006);
+    }
+    o.connect(bp); bp.connect(g); o.start(t0); o.stop(t0 + reps*gap + .02);
+  } else {
+    // a buzzy squeal with a fast warble
+    const o = c.createOscillator(); o.type = 'sawtooth';
+    const f0 = rnd(1200, 2600), dur = rnd(.1, .28);
+    o.frequency.value = f0;
+    const v = c.createOscillator(); v.frequency.value = rnd(25, 60);
+    const vg = c.createGain(); vg.gain.value = f0*.08; v.connect(vg); vg.connect(o.frequency);
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f0*1.5; bp.Q.value = 3;
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(vol*.8, t0 + .02); g.gain.exponentialRampToValueAtTime(1e-4, t0 + dur);
+    o.connect(bp); bp.connect(g); o.start(t0); v.start(t0); o.stop(t0 + dur + .02); v.stop(t0 + dur + .02);
+  }
+}
+let audioTick = 0;
+function updateAudio(dt){
+  if (!soundOn || !AC || AC.state !== 'running') return;
+  const now = AC.currentTime;
+  audioTick += dt;
+  if (audioTick > .08){
+    audioTick = 0;
+    const L = Math.min(1, activity*3 + nearness*.6) * Math.min(1, flying/(n*.05 + 1));
+    A.wg.gain.setTargetAtTime(L*.75, now, .25);
+    A.bp.frequency.setTargetAtTime(380 + L*1500, now, .3);
+    A.fl.gain.setTargetAtTime(L*.16, now, .2);
+    A.lfo.frequency.setTargetAtTime(13 + L*6, now, .5);
+    if (A.pan) A.pan.pan.setTargetAtTime(Math.max(-.8, Math.min(.8, meanX*.6)), now, .4);
+    A.wind.gain.setTargetAtTime(SKY.stars > .5 ? .07 : .045, now, 1);
+  }
+  // chatter: loud as they settle, hushing through the night, rising before they leave
+  const u = cyc, r = roosted/n;
+  let lvl = u < .7 ? 1 : u < .8 ? 1 - .85*(u - .7)/.1 : u < .86 ? .15 + .85*(u - .8)/.06 : 1;
+  lvl *= r;
+  let k = lvl*42*dt;
+  let count = 0;
+  while (k > 0 && count < 5){ if (Math.random() < Math.min(1, k)) { chirp(now + .03 + Math.random()*dt); count++; } k -= 1; }
+}
+async function toggleSound(){
+  if (!AC && !initAudio()) return;
+  soundOn = !soundOn;
+  sndBtn.setAttribute('aria-pressed', String(soundOn));
+  sndBtn.textContent = soundOn ? 'Mute' : 'Play sound';
+  const now = AC.currentTime;
+  if (soundOn){
+    try { await AC.resume(); } catch (e) {}
+    A.master.gain.cancelScheduledValues(AC.currentTime);
+    A.master.gain.setTargetAtTime(.85, AC.currentTime, .4);
+  } else {
+    A.master.gain.cancelScheduledValues(now);
+    A.master.gain.setTargetAtTime(0, now, .15);
+    setTimeout(() => { if (!soundOn && AC) AC.suspend(); }, 600);
+  }
+}
+
+// ---------- ui ----------
+const ui = document.getElementById('ui');
+const sndBtn = document.getElementById('snd');
+const huntBtn = document.getElementById('hunt');
+sndBtn.addEventListener('click', toggleSound);
+huntBtn.addEventListener('click', () => { lastInput = performance.now(); sendFalcon(); wake(); });
+let dimTimer = 0;
+function wake(){
+  ui.classList.remove('dim');
+  clearTimeout(dimTimer);
+  dimTimer = setTimeout(() => { if (!ui.contains(document.activeElement)) ui.classList.add('dim'); }, 6000);
+}
+ui.addEventListener('focusin', wake);
+addEventListener('keydown', wake);
+if (WALL){ ui.hidden = true; stage.style.cursor = 'none'; }
+
+// ---------- frame ----------
+let lastFrame = 0, lastDraw = 0, workAvg = 0, lastTrim = 0;
+function frame(now){
+  requestAnimationFrame(frame);
+  if (WALL && now - lastDraw < 31) return;          // about 30 fps on the desktop
+  lastDraw = now;
+  const t0 = performance.now();
+  const tsec = now/1000;
+  let dt = lastFrame ? (now - lastFrame)/1000 : 1/60;
+  lastFrame = now;
+  dt = Math.min(dt, 1/24);
+
+  // the pointer falcon arrives with movement and leaves when you stop
+  const want = user.on && now - user.last < 4000 ? 1 : 0;
+  user.a += (want - user.a)*Math.min(1, dt*(want ? 6 : 1.5));
+  if (!want){ user.sx = user.x + user.vx*.3; user.sy = user.y - 500*dt; }
+  updateFalcon(user, dt);
+  // when nobody is hunting, a wild peregrine comes through now and then
+  const idle = now - lastInput > 8000;
+  if ((WALL || idle) && !reduced && flying > 400 && !autos[0].pass && now > nextPass){
+    sendFalcon();
+    nextPass = now + rnd(WALL ? 16 : 20, WALL ? 34 : 40)*1000;
+  }
+  if (autos[0].pass) nextPass = Math.max(nextPass, now + 8000);
+  runPass(autos[0], dt); runPass(autos[1], dt);
+
+  cyc = (cyc + dt/CYCLE) % 1;
+  palette(cyc);
+  setStatus(cyc);
+  step(dt);
+  updateAudio(dt);
+
+  if (gl) drawGL(tsec); else draw2DSky();
+
+  fg.setTransform(DPR,0,0,DPR,0,0);
+  if (gl) fg.clearRect(0, 0, W, H);
+  else draw2DBirds();
+  const ink = rgb(SKY.bird, .85), sway = reduced ? tsec*.35 : tsec;
+  fg.globalAlpha = .42; drawIsland(sway, rgb(SKY.land, .7), true); fg.globalAlpha = 1;
+  drawIsland(sway, rgb(SKY.land, .78), false);
+  drawReeds(sway, ink);
+  for (const fc of falcons) drawFalcon(fc, ink, tsec);
+
+  // keep it smooth: shed birds if the machine is struggling
+  const work = performance.now() - t0;
+  workAvg += (work - workAvg)*.05;
+  if (workAvg > (WALL ? 22 : 13) && now - lastTrim > 3000 && n > 2500){
+    n = Math.max(2500, Math.round(n*.85)); lastTrim = now; workAvg *= .8;
+  }
+}
+
+function drawGL(tsec){
+  gl.viewport(0, 0, glc.width, glc.height);
+  gl.disable(gl.BLEND);
+  gl.useProgram(skyP.p);
+  const u = skyP.u;
+  gl.uniform2f(u.uRes, glc.width, glc.height);
+  gl.uniform1f(u.uHor, (H - HOR)*DPR);
+  gl.uniform1f(u.uT, tsec % 20000);
+  gl.uniform3fv(u.uZen, SKY.zen); gl.uniform3fv(u.uMid, SKY.mid); gl.uniform3fv(u.uHorC, SKY.hor);
+  gl.uniform3fv(u.uGlowC, SKY.glow); gl.uniform3fv(u.uCL, SKY.cl); gl.uniform3fv(u.uCD, SKY.cd);
+  gl.uniform3fv(u.uLand, SKY.land);
+  gl.uniform2f(u.uGlow, SKY.glowW, SKY.glowE); gl.uniform1f(u.uStars, SKY.stars);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, landTex); gl.uniform1i(u.uTex, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, triBuf);
+  gl.enableVertexAttribArray(skyA); gl.vertexAttribPointer(skyA, 2, gl.FLOAT, false, 0, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.disableVertexAttribArray(skyA);
+
+  for (let i = 0; i < n; i++){
+    const o = i*4;
+    birdData[o] = px[i]; birdData[o+1] = py[i]; birdData[o+2] = pz[i];
+    birdData[o+3] = state[i] === 2 ? -1 : phase[i] + Math.min(.99, ex[i]);
+  }
+  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(birdP.p);
+  const b = birdP.u;
+  gl.uniform2f(b.uRes, glc.width, glc.height);
+  gl.uniform1f(b.uF, F*DPR); gl.uniform1f(b.uCx, CX*DPR); gl.uniform1f(b.uHorY, HOR*DPR);
+  gl.uniform1f(b.uCamH, CAMH); gl.uniform1f(b.uDpr, DPR); gl.uniform1f(b.uT, tsec % 600);
+  gl.uniform3fv(b.uCol, SKY.bird);
+  gl.bindBuffer(gl.ARRAY_BUFFER, birdBuf);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, birdData.subarray(0, n*4));
+  gl.enableVertexAttribArray(birdA); gl.vertexAttribPointer(birdA, 4, gl.FLOAT, false, 0, 0);
+  gl.uniform1f(b.uMir, 1); gl.drawArrays(gl.POINTS, 0, n);
+  gl.uniform1f(b.uMir, 0); gl.drawArrays(gl.POINTS, 0, n);
+  gl.disableVertexAttribArray(birdA);
+}
+
+// a plain canvas version for machines without WebGL
+function draw2DSky(){
+  fg.setTransform(DPR,0,0,DPR,0,0);
+  let g = fg.createLinearGradient(0, 0, 0, HOR);
+  g.addColorStop(0, rgb(SKY.zen)); g.addColorStop(.65, rgb(SKY.mid)); g.addColorStop(1, rgb(SKY.hor));
+  fg.fillStyle = g; fg.fillRect(0, 0, W, HOR + 1);
+  g = fg.createLinearGradient(0, HOR, 0, H);
+  g.addColorStop(0, rgb(SKY.hor, .8)); g.addColorStop(.4, rgb(SKY.mid, .7)); g.addColorStop(1, rgb(SKY.zen, .45));
+  fg.fillStyle = g; fg.fillRect(0, HOR, W, H - HOR);
+  fg.fillStyle = rgb(SKY.land); fg.fillRect(0, HOR - 2, W, 3);
+}
+function draw2DBirds(){
+  fg.fillStyle = rgb(SKY.bird);
+  for (let i = 0; i < n; i++){
+    if (state[i] === 2) continue;
+    const z = pz[i]; if (z < 3) continue;
+    const s = Math.max(1.2, F*.36/z*(1 + ex[i]*.8));
+    fg.fillRect(CX + F*px[i]/z - s/2, HOR - F*(py[i] - CAMH)/z - s/2, s, s);
+  }
+}
+
+function resize(){
+  W = innerWidth; H = innerHeight;
+  DPR = Math.min(devicePixelRatio || 1, WALL ? 1.5 : 1.75);
+  for (const c of [glc, fgc]){ c.width = Math.round(W*DPR); c.height = Math.round(H*DPR); }
+  F = Math.max(W, H*.85)*.92;
+  CX = W*.5;
+  HOR = H*(W < H ? .6 : .64);
+  drawLand();
+  layoutReeds();
+}
+addEventListener('resize', resize);
+document.addEventListener('visibilitychange', () => {
+  lastFrame = 0;
+  if (!AC || !soundOn) return;
+  if (document.hidden) AC.suspend(); else AC.resume();
+});
+if (gl){
+  glc.addEventListener('webglcontextlost', e => e.preventDefault());
+  glc.addEventListener('webglcontextrestored', () => location.reload());
+}
+
+resize();
+seed();
+if (!gl) n = Math.min(n, 2500);
+for (let i = 0; i < 50; i++) step(1/30);
+user.x = W*.8; user.y = -100;
+wake();
+requestAnimationFrame(frame);
+})();
+</script>
