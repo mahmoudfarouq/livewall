@@ -2,13 +2,19 @@ import Foundation
 
 enum CLI {
     static func set(_ args: [String]) {
-        let (flags, positional) = parseFlags(args, valued: ["--key", "--screen"],
+        let (flags, positional) = parseFlags(args, valued: ["--key", "--screen", "--fps"],
                                              boolean: ["--wallpaper-hash", "--no-wallpaper-hash"])
-        guard positional.count == 1 else { fail("usage: livewall set <path-or-url> [options]") }
+        guard positional.count == 1 else { fail("set needs exactly one path or URL (see livewall --help)") }
         let key = flags["--key"] ?? "option"
+        guard Wallpaper.modifierFlags[key] != nil else { fail("--key must be option, control, command or fn") }
         let screen = flags["--screen"] ?? "all"
-        let hash = flags["--no-wallpaper-hash"] == nil
-        let url = resolve(positional[0], hash: hash)
+        guard ["all", "main"].contains(screen) else { fail("--screen must be all or main") }
+        var fps: Int?
+        if let f = flags["--fps"] {
+            guard let n = Int(f), n > 0 else { fail("--fps must be a positive number") }
+            fps = n
+        }
+        let url = resolve(positional[0], hash: flags["--no-wallpaper-hash"] == nil, fps: fps)
 
         stopRunning(quiet: true)
         let pid = spawnDaemon(["daemon", "--url", url.absoluteString, "--key", key, "--screen", screen])
@@ -19,8 +25,49 @@ enum CLI {
         if !stopRunning(quiet: false) { print("livewall: not running") }
     }
 
+    static func status() {
+        guard let s = readState(), isAlive(s.pid) else {
+            clearState()
+            print("livewall: not running")
+            exit(1)
+        }
+        let started = s.started.map { DateFormatter.localizedString(from: $0, dateStyle: .short, timeStyle: .short) } ?? "?"
+        print("""
+        running   pid \(s.pid), since \(started)
+        url       \(s.url)
+        key       hold \(s.key) to interact
+        screens   \(s.screen)
+        log       \(Paths.log.path)
+        """)
+    }
+
+    static func reload() {
+        guard let s = readState(), isAlive(s.pid) else { fail("not running") }
+        kill(s.pid, SIGUSR1)
+        print("livewall: reloading \(s.url)")
+    }
+
+    static let usage = """
+    livewall: an HTML page or URL as your live desktop wallpaper.
+
+    usage:
+      livewall set <path-or-url> [options]   show a page on the desktop (replaces any running one)
+      livewall stop                          remove it
+      livewall status                        show what is running
+      livewall reload                        reload the page(s)
+      livewall --help
+
+    set options:
+      --key option|control|command|fn   hold this key to click/drag/scroll the page (default: option)
+      --screen all|main                 every screen, or only the menu-bar screen (default: all)
+      --fps N                           append ?fps=N for pages that read it (livewall itself does not cap it)
+      --wallpaper-hash                  append #wallpaper to local files (default)
+      --no-wallpaper-hash               load local files without it
+
+    Files live in ~/Library/Application Support/livewall/ (state.json, livewall.pid, livewall.log).
+    """
     /// Turns a path or URL into the URL the daemon loads.
-    static func resolve(_ input: String, hash: Bool) -> URL {
+    static func resolve(_ input: String, hash: Bool, fps: Int?) -> URL {
         var url: URL
         if let u = URL(string: input), let scheme = u.scheme?.lowercased(), ["http", "https", "file"].contains(scheme) {
             url = u
@@ -32,10 +79,10 @@ enum CLI {
             }
             if isDir.boolValue { url.appendPathComponent("index.html") }
         }
-        if hash, url.isFileURL, url.fragment == nil, let withHash = URL(string: url.absoluteString + "#wallpaper") {
-            url = withHash
-        }
-        return url
+        guard var c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { fail("bad url \(input)") }
+        if let fps { c.queryItems = (c.queryItems ?? []) + [URLQueryItem(name: "fps", value: String(fps))] }
+        if hash, url.isFileURL, c.fragment == nil { c.fragment = "wallpaper" }
+        return c.url ?? url
     }
 
     /// Re-executes this binary as a detached `daemon` and waits until it reports in.
@@ -84,6 +131,9 @@ let args = Array(CommandLine.arguments.dropFirst())
 switch args.first {
 case "set": CLI.set(Array(args.dropFirst()))
 case "stop": CLI.stop()
-case "daemon": Daemon.run(Array(args.dropFirst()))
-default: print("usage: livewall set <path-or-url> | stop")
+case "status": CLI.status()
+case "reload": CLI.reload()
+case "daemon": Daemon.run(Array(args.dropFirst())) // hidden: what `set` re-execs
+case nil, "-h", "--help", "help": print(CLI.usage)
+default: fail("unknown command '\(args[0])', see livewall --help")
 }
