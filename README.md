@@ -89,6 +89,7 @@ closing the terminal does not kill it. It keeps `state.json`, `livewall.pid` and
 | `dream-archive` | Dream Archive |
 | `glassblower` | Glassblower's Bench |
 | `ink-water` | Floating Ink |
+| `last-train` | The Last Train |
 | `lighthouse-keeper` | Lighthouse Keeper |
 | `murmuration` | Fen Murmuration |
 | `mycelium` | The Wood Wide Web |
