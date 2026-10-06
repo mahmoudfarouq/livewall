@@ -18,7 +18,7 @@ jobs:
     name: Build and smoke test
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Swift version
         run: swift --version
@@ -50,7 +50,7 @@ jobs:
     name: Check presets
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Every preset has a title and the charset meta
         run: |
           fail=0
