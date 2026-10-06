@@ -1,0 +1,1160 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Living Type Specimen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=Instrument+Sans:wght@400..600&family=Instrument+Serif:ital@0;1&display=swap">
+<style>
+:root {
+  --bg: #d9e2df;
+  --text: #15252a;
+  --muted: #4d6266;
+  --line: #9db1ac;
+  --panel: rgba(238, 244, 241, 0.82);
+  --dish: #edf3f0;
+  --dish-shade: #c9d8d3;
+  --rim: #8ea7a1;
+  --rim-light: #ffffff;
+  --grid: #3b6a68;
+  --food: #50676a;
+  --ink-1: #1b3f94;
+  --ink-2: #c0185c;
+  --ink-3: #0b6b58;
+  --ink-4: #4b2a7a;
+  --ink-5: #a85d00;
+  --focus: #c0185c;
+  --accent: #1b3f94;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #060d10;
+    --text: #d6e5e2;
+    --muted: #8aa3a1;
+    --line: #2a4448;
+    --panel: rgba(9, 20, 24, 0.8);
+    --dish: #0b181c;
+    --dish-shade: #030809;
+    --rim: #2f5157;
+    --rim-light: #9fd3d6;
+    --grid: #7fc9c4;
+    --food: #86a6a2;
+    --ink-1: #8db3ff;
+    --ink-2: #ff7fb3;
+    --ink-3: #58e0bd;
+    --ink-4: #c6a6ff;
+    --ink-5: #ffc66a;
+    --focus: #ffc66a;
+    --accent: #8db3ff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #060d10;
+  --text: #d6e5e2;
+  --muted: #8aa3a1;
+  --line: #2a4448;
+  --panel: rgba(9, 20, 24, 0.8);
+  --dish: #0b181c;
+  --dish-shade: #030809;
+  --rim: #2f5157;
+  --rim-light: #9fd3d6;
+  --grid: #7fc9c4;
+  --food: #86a6a2;
+  --ink-1: #8db3ff;
+  --ink-2: #ff7fb3;
+  --ink-3: #58e0bd;
+  --ink-4: #c6a6ff;
+  --ink-5: #ffc66a;
+  --focus: #ffc66a;
+  --accent: #8db3ff;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.4 "Instrument Sans", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+canvas#dish {
+  position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh;
+  display: block; touch-action: none; cursor: crosshair;
+}
+.plate {
+  position: fixed; top: max(14px, env(safe-area-inset-top)); left: max(16px, env(safe-area-inset-left));
+  max-width: min(330px, calc(100vw - 32px)); pointer-events: none;
+}
+.plate h1 {
+  margin: 0; font-family: "Bricolage Grotesque", serif; font-weight: 760;
+  font-variation-settings: "opsz" 96, "wdth" 78; font-size: 30px; line-height: 0.95; letter-spacing: -0.02em;
+}
+.plate .sub { margin: 6px 0 0; font-family: "Instrument Serif", serif; font-style: italic; font-size: 17px; color: var(--muted); line-height: 1.2; }
+.plate .stats { margin: 6px 0 0; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.log {
+  position: fixed; top: max(14px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right));
+  width: 250px; max-height: calc(100vh - 200px); overflow: hidden;
+}
+.log h2 { margin: 0 0 4px; font-family: "Instrument Serif", serif; font-weight: 400; font-size: 20px; }
+.log ol { list-style: none; margin: 0; padding: 0; }
+.log li { font-size: 13px; color: var(--muted); padding: 3px 0; border-top: 1px solid var(--line); animation: appear .8s ease-out; }
+.log li b { font-family: "Instrument Serif", serif; font-style: italic; font-weight: 400; font-size: 19px; color: var(--text); margin-right: 6px; }
+.log li .kin { display: block; font-size: 12px; }
+.log li span:not(.kin) { font-variant-numeric: tabular-nums; }
+.log .empty { font-family: "Instrument Serif", serif; font-style: italic; color: var(--muted); }
+@keyframes appear { from { opacity: 0; transform: translateY(-4px); } }
+.feed {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: max(12px, env(safe-area-inset-bottom)); width: min(460px, calc(100vw - 32px));
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px 8px;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.feed label { display: block; font-family: "Instrument Serif", serif; font-style: italic; font-size: 16px; color: var(--muted); margin: 0 2px 4px; }
+.feed .row { display: flex; gap: 8px; }
+.feed input {
+  flex: 1; min-width: 0; font: 600 20px "Bricolage Grotesque", sans-serif; color: var(--text);
+  background: transparent; border: 0; border-bottom: 1.5px solid var(--line); padding: 4px 2px; border-radius: 0;
+}
+.feed input::placeholder { color: var(--muted); opacity: .6; font-weight: 400; }
+button {
+  font: 500 14px "Instrument Sans", sans-serif; color: var(--text); background: transparent;
+  border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer; min-height: 36px;
+}
+button[type="submit"] { background: var(--accent); color: var(--dish); border-color: var(--accent); font-weight: 600; }
+button[aria-pressed="true"] { border-color: var(--text); }
+.tools { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.tools button { font-size: 13px; padding: 4px 11px; min-height: 32px; }
+.tools .hint { margin-left: auto; align-self: center; font-size: 12px; color: var(--muted); font-family: "Instrument Serif", serif; font-style: italic; font-size: 14px; }
+:focus { outline: none; }
+:focus-visible { outline: 2.5px solid var(--focus); outline-offset: 2px; }
+.feed input:focus-visible { outline: none; border-bottom-color: var(--focus); box-shadow: 0 2px 0 0 var(--focus); }
+.card {
+  position: fixed; z-index: 5; width: 210px; pointer-events: none;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px 10px;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); font-size: 13px;
+}
+.card[hidden] { display: none; }
+.card .nm { font: 700 24px/1 "Bricolage Grotesque", sans-serif; margin: 0 0 2px; word-break: break-all; }
+.card .meta { color: var(--muted); font-family: "Instrument Serif", serif; font-style: italic; font-size: 15px; margin-bottom: 6px; }
+.card dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; margin: 0; align-items: center; }
+.card dt { color: var(--muted); }
+.card dd { margin: 0; height: 5px; border-radius: 3px; background: var(--line); position: relative; overflow: hidden; }
+.card dd i { position: absolute; inset: 0 auto 0 0; background: var(--text); border-radius: 3px; }
+.card .facts { margin-top: 6px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 760px) {
+  .plate h1 { font-size: 24px; }
+  .plate .sub { font-size: 15px; }
+  .log { top: auto; right: 16px; left: 16px; width: auto; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 128px); max-height: 3.6em; }
+  .log h2 { display: none; }
+  .log li { display: inline; border: 0; padding: 0 10px 0 0; }
+  .log li .kin { display: inline; }
+  .tools .hint { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .log li { animation: none; }
+}
+</style>
+
+<canvas id="dish" aria-label="A petri dish of word creatures. Drag to scatter letters as food; tap a creature to read its card." role="img"></canvas>
+
+<header class="plate">
+  <h1>Living Type Specimen</h1>
+  <p class="sub">Plate I. A culture of words: every letter a cell, every word a body.</p>
+  <p class="stats" id="stats"></p>
+</header>
+
+<aside class="log" aria-labelledby="log-h">
+  <h2 id="log-h">Words born</h2>
+  <ol id="log" aria-live="polite"><li class="empty">Nothing has hatched yet.</li></ol>
+</aside>
+
+<div id="card" class="card" hidden aria-live="polite"></div>
+
+<form id="feed" class="feed" autocomplete="off">
+  <label for="word-input">Name a creature, then release it into the dish</label>
+  <div class="row">
+    <input id="word-input" name="word" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="12" placeholder="a word, any word" enterkeyhint="go">
+    <button type="submit">Release</button>
+  </div>
+  <div class="tools">
+    <button type="button" id="snd" aria-pressed="false">Sound</button>
+    <button type="button" id="pause" aria-pressed="false">Pause</button>
+    <button type="button" id="theme">Darkfield</button>
+    <span class="hint">Drag in the dish to scatter food</span>
+  </div>
+</form>
+
+<script>
+"use strict";
+// ---- PURE START (genome logic; loaded by check.js) ----
+const VOWELS = "aeiouy";
+const HARD = "kqxzjv";
+const MAXLEN = 11;
+const LETTER_FREQ = "eeeeeeeeeeeettttttttaaaaaaaaoooooooiiiiiiinnnnnnnsssssshhhhhhrrrrrrddddllllcccuuummmwwffggyyppbbvkjxqz";
+const CONS_FREQ = LETTER_FREQ.replace(/[aeiouy]/g, "");
+const PLAIN_VOWELS = "aaeeeiioou";
+const CLUSTERS = new Set(("bl br ch cl cr dr fl fr gl gr kn ph pl pr qu sc sh sk sl sm sn sp st sw th tr tw wh wr " +
+  "ck ng nk nd nt mp lk ld lt rd rk rm rn rt ss ll tt ff mm nn pp rr gh ps ts ct ft pt lm lp rb rc rg rp rs nc ns ms " +
+  "rl rv lf lv mb nz sq").split(" "));
+function isVowel(ch) { return VOWELS.includes(ch); }
+function cleanWord(s) { return String(s || "").toLowerCase().replace(/[^a-z]/g, "").slice(0, 12); }
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function pick(str, rng) { return str[Math.floor(rng() * str.length) % str.length]; }
+function traits(word) {
+  const L = Math.max(1, word.length);
+  let v = 0, hard = 0;
+  for (const ch of word) { if (isVowel(ch)) v++; if (HARD.includes(ch)) hard++; }
+  const repeats = L - new Set(word).size;
+  return {
+    speed: 0.55 + 1.2 * (v / L),                   // vowels make it swim
+    armour: Math.min(1, (L - v) / L),               // consonants harden it
+    appetite: 1 + Math.min(1.5, repeats * 0.45),    // repeated letters make it greedy
+    bite: Math.min(1, (hard / L) * 2.2 + (hard ? 0.15 : 0)), // hard letters grow teeth
+    vowels: v, length: L
+  };
+}
+function inkIndex(word) {
+  let h = 7;
+  for (const ch of word.slice(0, 3)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return h % 5;
+}
+// How sayable a string is, 0..1: alternation of consonant and vowel, known clusters, no long runs.
+function pronounceability(w) {
+  if (!/^[a-z]+$/.test(w)) return 0;
+  let score = 1, vowels = 0, cRun = 0, vRun = 0;
+  for (let i = 0; i < w.length; i++) {
+    const ch = w[i];
+    if (isVowel(ch)) {
+      vowels++; vRun++; cRun = 0;
+      if (vRun === 3) score -= 0.25;
+      if (vRun > 3) score -= 0.15;
+    } else {
+      cRun++; vRun = 0;
+      if (cRun === 2 && !CLUSTERS.has(w[i - 1] + ch)) score -= 0.2;
+      if (cRun >= 3) score -= 0.3;
+    }
+    if (i >= 2 && ch === w[i - 1] && ch === w[i - 2]) score -= 0.4;
+  }
+  if (vowels === 0) score -= 0.7;
+  if (w.includes("q") && !w.includes("qu")) score -= 0.15;
+  if (w.length < 2) score -= 0.3;
+  return Math.max(0, Math.min(1, score));
+}
+// Point mutation: substitute within class (vowel for vowel, consonant for consonant), insert, delete, swap.
+function mutate(word, rng, rate = 0.14) {
+  let out = "";
+  for (const ch of word) {
+    const r = rng();
+    if (r < rate * 0.5) {
+      if (rng() < 0.15) out += pick(LETTER_FREQ, rng);
+      else out += isVowel(ch) ? pick(PLAIN_VOWELS, rng) : pick(CONS_FREQ, rng);
+    } else if (r < rate * 0.68) {
+      // deletion
+    } else if (r < rate * 0.9) {
+      out += ch + pick(LETTER_FREQ, rng);
+    } else out += ch;
+  }
+  if (out.length > 2 && rng() < rate * 0.5) {
+    const i = Math.floor(rng() * (out.length - 1));
+    out = out.slice(0, i) + out[i + 1] + out[i] + out.slice(i + 2);
+  }
+  if (!out) out = pick(PLAIN_VOWELS, rng);
+  return out.slice(0, MAXLEN);
+}
+// Single-point crossover: head of a, tail of b.
+function crossover(a, b, rng) {
+  const i = 1 + Math.floor(rng() * Math.max(1, a.length - 1));
+  const j = Math.floor(rng() * b.length);
+  let c = a.slice(0, i) + b.slice(j);
+  if (c.length < 2) c += b.slice(0, 2 - c.length) || "a";
+  return c.slice(0, 9);
+}
+// Brood selection: make several candidates, keep the most sayable one (with a little noise for surprise).
+function breed(a, b, rng, tries = 10) {
+  let best = null, bs = -Infinity;
+  for (let k = 0; k < tries; k++) {
+    let c = mutate(crossover(a, b, rng), rng);
+    if (c.length < 2) c += pick(PLAIN_VOWELS, rng);
+    const lenFit = c.length >= 3 && c.length <= 7 ? 0.15 : 0;
+    const novelty = c === a || c === b ? -0.3 : 0;
+    const s = pronounceability(c) + lenFit + novelty + rng() * 0.12;
+    if (s > bs) { bs = s; best = c; }
+  }
+  return best;
+}
+// Where a swallowed letter settles: at the tail if that stays sayable, otherwise wherever in the body it reads best.
+function absorb(word, ch) {
+  let best = word + ch, bs = pronounceability(best) + 0.12;
+  for (let i = word.length - 1; i >= 1; i--) {
+    const c = word.slice(0, i) + ch + word.slice(i), sc = pronounceability(c) + (i / word.length) * 0.05;
+    if (sc > bs) { bs = sc; best = c; }
+  }
+  return best;
+}
+// The letters a body craves: those it can absorb without becoming harder to say.
+function cravings(word) {
+  const base = pronounceability(word), out = new Set();
+  for (let i = 97; i <= 122; i++) { const ch = String.fromCharCode(i); if (pronounceability(absorb(word, ch)) >= base - 0.02) out.add(ch); }
+  return out;
+}
+// ---- PURE END ----
+
+const TAU = Math.PI * 2;
+const $ = (s) => document.querySelector(s);
+const cv = $("#dish"), ctx = cv.getContext("2d");
+const rand = (a = 1, b) => (b === undefined ? Math.random() * a : a + Math.random() * (b - a));
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const angDiff = (a, b) => { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const FONT = '"Bricolage Grotesque", "Instrument Sans", sans-serif';
+const RNG = Math.random;
+
+const reduceMQ = matchMedia("(prefers-reduced-motion: reduce)");
+let motion = reduceMQ.matches ? 0.3 : 1;
+reduceMQ.addEventListener("change", (e) => { motion = e.matches ? 0.3 : 1; });
+
+// ---- tokens ----
+const C = {};
+const TOKEN_NAMES = ["bg", "text", "muted", "line", "dish", "dish-shade", "rim", "rim-light", "grid", "food", "ink-1", "ink-2", "ink-3", "ink-4", "ink-5"];
+function readTokens() {
+  const cs = getComputedStyle(document.documentElement);
+  for (const n of TOKEN_NAMES) C[n] = cs.getPropertyValue("--" + n).trim();
+  C.inks = [C["ink-1"], C["ink-2"], C["ink-3"], C["ink-4"], C["ink-5"]];
+  C.dark = isDarkTheme();
+  bgDirty = true;
+}
+function isDarkTheme() {
+  const t = document.documentElement.dataset.theme;
+  if (t) return t === "dark";
+  return matchMedia("(prefers-color-scheme: dark)").matches;
+}
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { readTokens(); syncThemeButton(); });
+
+// ---- geometry ----
+let W = 0, H = 0, DPR = 1, bgDirty = true;
+const dish = { x: 0, y: 0, r: 0 };
+let K = 1; // global scale
+function layout() {
+  const prev = { ...dish };
+  W = innerWidth; H = innerHeight; DPR = Math.min(2, devicePixelRatio || 1);
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  const formTop = $("#feed").getBoundingClientRect().top;
+  if (W >= 900) {
+    const top = 14, bottom = formTop - 10;
+    dish.r = Math.max(120, Math.min((bottom - top) / 2, (W - 2 * 280) / 2));
+    dish.x = W / 2; dish.y = top + (bottom - top) / 2;
+  } else {
+    const top = $(".plate").getBoundingClientRect().bottom + 4;
+    const bottom = Math.min(formTop, $(".log").getBoundingClientRect().top) - 6;
+    dish.r = Math.max(110, Math.min(W / 2 - 8, (bottom - top) / 2));
+    dish.x = W / 2; dish.y = top + (bottom - top) / 2;
+  }
+  K = clamp(dish.r / 360, 0.62, 1.25);
+  if (prev.r > 0) {
+    const s = dish.r / prev.r;
+    const mv = (o) => { o.x = dish.x + (o.x - prev.x) * s; o.y = dish.y + (o.y - prev.y) * s; };
+    for (const c of creatures) { mv(c); c.segs.forEach(mv); c.rebuild(); }
+    for (const f of food) mv(f);
+  }
+  bgDirty = true;
+}
+
+// ---- glyph metrics ----
+const glyphW = {};
+function measureGlyphs() {
+  ctx.save();
+  ctx.font = `600 100px ${FONT}`;
+  for (let i = 97; i <= 122; i++) { const ch = String.fromCharCode(i); glyphW[ch] = ctx.measureText(ch).width / 100 || 0.55; }
+  ctx.restore();
+}
+measureGlyphs();
+
+// ---- background (dish, reticle, grain) ----
+const bg = document.createElement("canvas"), bgx = bg.getContext("2d");
+function paintBackground() {
+  bg.width = cv.width; bg.height = cv.height;
+  const g = bgx; g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  g.fillStyle = C.bg; g.fillRect(0, 0, W, H);
+  g.save();
+  g.beginPath(); g.arc(dish.x, dish.y + 6, dish.r + 10, 0, TAU); g.fillStyle = C["dish-shade"]; g.globalAlpha = 0.35; g.fill();
+  g.globalAlpha = 1;
+  g.beginPath(); g.arc(dish.x, dish.y, dish.r + 8, 0, TAU); g.fillStyle = C.dish; g.fill();
+  const rg = g.createRadialGradient(dish.x, dish.y, dish.r * 0.55, dish.x, dish.y, dish.r + 8);
+  rg.addColorStop(0, "rgba(0,0,0,0)"); rg.addColorStop(1, C["dish-shade"]);
+  g.globalAlpha = C.dark ? 0.8 : 0.45; g.fillStyle = rg; g.fill(); g.globalAlpha = 1;
+  g.strokeStyle = C.grid; g.lineWidth = 1;
+  g.globalAlpha = 0.09;
+  for (let k = 1; k <= 3; k++) { g.beginPath(); g.arc(dish.x, dish.y, dish.r * k / 4, 0, TAU); g.stroke(); }
+  g.globalAlpha = 0.16;
+  g.beginPath(); g.moveTo(dish.x - dish.r * 0.92, dish.y); g.lineTo(dish.x + dish.r * 0.92, dish.y);
+  g.moveTo(dish.x, dish.y - dish.r * 0.92); g.lineTo(dish.x, dish.y + dish.r * 0.92); g.stroke();
+  const step = dish.r / 20;
+  g.beginPath();
+  for (let i = -18; i <= 18; i++) {
+    const len = i % 5 === 0 ? 7 : 3.5;
+    g.moveTo(dish.x + i * step, dish.y - len); g.lineTo(dish.x + i * step, dish.y + len);
+    g.moveTo(dish.x - len, dish.y + i * step); g.lineTo(dish.x + len, dish.y + i * step);
+  }
+  g.stroke();
+  g.globalAlpha = C.dark ? 0.05 : 0.06;
+  g.fillStyle = C.grid;
+  const n = Math.floor(dish.r * dish.r * 0.02);
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * TAU, rr = Math.sqrt(Math.random()) * dish.r;
+    g.fillRect(dish.x + Math.cos(a) * rr, dish.y + Math.sin(a) * rr, 1, 1);
+  }
+  g.globalAlpha = 1;
+  g.lineWidth = 2.5; g.strokeStyle = C.rim;
+  g.beginPath(); g.arc(dish.x, dish.y, dish.r + 8, 0, TAU); g.stroke();
+  g.lineWidth = 1; g.globalAlpha = 0.6;
+  g.beginPath(); g.arc(dish.x, dish.y, dish.r + 3, 0, TAU); g.stroke();
+  g.strokeStyle = C["rim-light"]; g.lineWidth = 3; g.globalAlpha = C.dark ? 0.25 : 0.9;
+  g.beginPath(); g.arc(dish.x, dish.y, dish.r + 6, Math.PI * 1.08, Math.PI * 1.42); g.stroke();
+  g.lineWidth = 1.5; g.globalAlpha = C.dark ? 0.15 : 0.6;
+  g.beginPath(); g.arc(dish.x, dish.y, dish.r + 5, Math.PI * 0.1, Math.PI * 0.22); g.stroke();
+  g.restore();
+  bgDirty = false;
+}
+
+// ---- world state ----
+let uid = 0;
+const creatures = [];
+const food = [];
+const crumbs = [];
+const ripples = [];
+const seen = new Set();
+const stats = { born: 0, maxGen: 1, eaten: 0 };
+const popCap = () => (W < 760 ? 15 : 22);
+
+function randomLetter() { return LETTER_FREQ[(Math.random() * LETTER_FREQ.length) | 0]; }
+function randomInDish(f = 0.85) {
+  const a = rand(TAU), r = Math.sqrt(Math.random()) * dish.r * f;
+  return { x: dish.x + Math.cos(a) * r, y: dish.y + Math.sin(a) * r };
+}
+function burst(x, y, col, n = 6, sp = 40) {
+  for (let i = 0; i < n; i++) {
+    const a = rand(TAU), v = rand(0.3, 1) * sp * K;
+    crumbs.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rand(0.4, 0.9), max: 0.9, col, r: rand(0.8, 2) * K });
+  }
+}
+
+class Creature {
+  constructor(word, x, y, o = {}) {
+    this.id = ++uid; this.word = word; this.gen = o.gen || 1; this.parents = o.parents || null;
+    this.eaten = 0; this.children = 0; this.energy = o.energy ?? 0.85; this.age = 0;
+    this.x = x; this.y = y; this.heading = o.heading ?? rand(TAU); this.wander = this.heading;
+    this.phase = rand(TAU); this.segs = []; this.born = o.instant ? 1 : 0;
+    this.thinkT = 0; this.target = null; this.prey = null; this.mate = null; this.digest = [];
+    this.reproCd = 6 + rand(6); this.biteCd = 0; this.fleeT = 0; this.fleeFrom = null;
+    this.shedT = 1.2; this.mouthT = 0; this.boost = 1; this.dead = false;
+    this.lifespan = 140 + rand(120);
+    this.rebuild();
+  }
+  get isJelly() { return this.word.length <= 3; }
+  get isPredator() { return this.t.bite >= 0.35 && this.word.length >= 4; }
+  get head() { return this.segs[0]; }
+  rebuild() {
+    this.t = traits(this.word);
+    this.crave = cravings(this.word);
+    this.ink = inkIndex(this.word);
+    this.weight = Math.round((300 + this.t.armour * 480) / 20) * 20;
+    this.size = K * (19 + this.t.armour * 7 + Math.min(this.word.length, 12) * 0.6);
+    const L = this.word.length;
+    while (this.segs.length < L) {
+      const last = this.segs[this.segs.length - 1] || { x: this.x, y: this.y, a: this.heading };
+      this.segs.push({ x: last.x - Math.cos(last.a) * 4, y: last.y - Math.sin(last.a) * 4, a: last.a });
+    }
+    this.segs.length = L;
+  }
+  segSize(i) {
+    const L = this.word.length;
+    if (this.isJelly) return this.size * 0.95;
+    return this.size * (i === 0 ? 1.12 : 1 - 0.36 * Math.pow(i / Math.max(1, L - 1), 1.1));
+  }
+  spacing(i) {
+    const w = this.word;
+    return ((glyphW[w[i - 1]] || 0.55) * this.segSize(i - 1) + (glyphW[w[i]] || 0.55) * this.segSize(i)) * 0.44 + 1.5 * K;
+  }
+  wants(ch) { return this.crave.has(ch); }
+  think() {
+    const h = this.head, range = K * (120 + 70 * this.t.appetite);
+    let best = null, bs = 0;
+    if (this.energy < 1.05) {
+      for (const f of food) {
+        if (f.eatenBy) continue;
+        const d = dist(f, h); if (d > range) continue;
+        const s = (this.wants(f.ch) ? 2.2 : 0.6) / (d + 25 * K);
+        if (s > bs) { bs = s; best = f; }
+      }
+    }
+    this.prey = null;
+    if (this.isPredator && this.energy < 0.75 && this.biteCd <= 0) {
+      for (const o of creatures) {
+        if (o === this || o.dead || o.word.length < 2 || o.born < 1) continue;
+        if (o.t.armour > this.t.bite + 0.55) continue;
+        if (o.isPredator && o.word.length >= this.word.length) continue;
+        const d = dist(o.segs[o.segs.length - 1], h); if (d > range * 1.3) continue;
+        const s = (2.4 - this.energy) / (d + 25 * K);
+        if (s > bs) { bs = s; best = null; this.prey = o; }
+      }
+    }
+    this.target = best;
+    // courtship: a fed, long-enough body swims toward a willing partner
+    this.mate = null;
+    if (this.energy > 0.7 && this.word.length >= 5 && this.reproCd <= 0 && !this.prey) {
+      let md = range * 1.6;
+      for (const o of creatures) {
+        if (o === this || o.dead || o.reproCd > 0 || o.word.length < 5 || o.energy < 0.55 || o.born < 1) continue;
+        const d = dist(o.head, h); if (d < md) { md = d; this.mate = o; }
+      }
+      if (this.mate) this.target = null;
+    }
+  }
+  desiredHeading(dt) {
+    this.wander += (Math.random() - 0.5) * 2.4 * dt;
+    let want = this.wander;
+    const h = this.head;
+    let tp = null;
+    if (this.mate && !this.mate.dead) tp = this.mate.head;
+    else if (this.prey && !this.prey.dead && this.prey.segs.length) tp = this.prey.segs[this.prey.segs.length - 1];
+    else if (this.target && !this.target.eatenBy && !this.target.gone) tp = this.target;
+    if (tp) { want = Math.atan2(tp.y - h.y, tp.x - h.x); this.wander = want; }
+    if (this.fleeT > 0 && this.fleeFrom) {
+      want = Math.atan2(h.y - this.fleeFrom.y, h.x - this.fleeFrom.x); this.wander = want;
+    }
+    const dx = this.x - dish.x, dy = this.y - dish.y, d = Math.hypot(dx, dy);
+    if (d > dish.r * 0.8) {
+      const home = Math.atan2(-dy, -dx);
+      const k = clamp((d - dish.r * 0.8) / (dish.r * 0.14), 0, 1);
+      want = want + angDiff(home, want) * k;
+      this.wander += angDiff(home, this.wander) * k * dt * 2;
+    }
+    return want;
+  }
+  update(dt, time) {
+    this.age += dt; this.born = Math.min(1, this.born + dt * 1.2);
+    this.reproCd -= dt; this.biteCd -= dt; this.fleeT -= dt; this.mouthT -= dt;
+    this.thinkT -= dt; if (this.thinkT <= 0) { this.thinkT = 0.25 + rand(0.25); this.think(); }
+    const want = this.desiredHeading(dt);
+    const turn = 2.2 + this.t.speed;
+    this.heading += clamp(angDiff(want, this.heading), -turn * dt, turn * dt);
+    const chase = this.prey || this.target || this.mate ? 1.18 : 1;
+    const flee = this.fleeT > 0 ? 1.8 : 1;
+    const speed = K * 34 * this.t.speed * (0.55 + 0.45 * clamp(this.energy, 0, 1)) * this.boost * chase * flee;
+    if (this.isJelly) this.updateJelly(dt, speed);
+    else this.updateWorm(dt, speed);
+    this.metabolism(dt);
+    // digestion: swallowed letters travel down the spine and become new tail segments
+    for (const d of this.digest) d.t += dt * (this.isJelly ? 2.4 : 1.3);
+    while (this.digest.length && this.digest[0].t >= 1) {
+      const d = this.digest.shift();
+      if (this.word.length < MAXLEN) { this.word = absorb(this.word, d.ch); this.rebuild(); }
+    }
+  }
+  metabolism(dt) {
+    const L = this.word.length;
+    const old = this.age > this.lifespan ? 1 + (this.age - this.lifespan) / 30 : 1;
+    const crowd = 1 + Math.max(0, creatures.length - popCap() * 0.4) / popCap() * 4;
+    this.energy -= dt * 0.021 * (0.6 + L * 0.07) * (0.75 + 0.25 * this.t.speed) * old * crowd;
+    if (this.energy <= 0) {
+      this.energy = 0;
+      this.shedT -= dt;
+      if (this.shedT <= 0) {
+        this.shedT = 1.3;
+        if (this.word.length <= 1) { this.die(); return; }
+        this.shed(); this.energy = 0.05;
+      }
+    }
+  }
+  shed() {
+    const t = this.segs[this.segs.length - 1], ch = this.word[this.word.length - 1];
+    this.word = this.word.slice(0, -1); this.rebuild();
+    food.push(new Food(ch, t.x, t.y, rand(-20, 20) * K, rand(-20, 20) * K, true));
+    burst(t.x, t.y, C.inks[this.ink], 3, 20);
+    return ch;
+  }
+  die() {
+    if (this.dead) return;
+    this.dead = true;
+    for (let i = 0; i < this.word.length; i++) {
+      const s = this.segs[i], a = rand(TAU), v = rand(10, 40) * K;
+      food.push(new Food(this.word[i], s.x, s.y, Math.cos(a) * v, Math.sin(a) * v, true));
+      burst(s.x, s.y, C.inks[this.ink], 3, 30);
+    }
+    if (selected === this) selected = null;
+    sfx.crumble();
+  }
+  feed(ch) {
+    this.energy = Math.min(1.25, this.energy + (this.wants(ch) ? 0.2 : 0.14));
+    this.eaten++; stats.eaten++; this.mouthT = 0.25;
+    this.digest.push({ ch, t: 0 });
+  }
+  updateWorm(dt, speed) {
+    this.phase += dt * (2.6 + this.t.speed * 2.4) * (speed > 0 ? 1 : 0.3);
+    const dir = this.heading + Math.sin(this.phase) * 0.5 * motion;
+    this.x += Math.cos(dir) * speed * dt; this.y += Math.sin(dir) * speed * dt;
+    const s = this.segs; s[0].x = this.x; s[0].y = this.y; s[0].a = dir;
+    for (let i = 1; i < s.length; i++) {
+      const p = s[i - 1], q = s[i];
+      const dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy) || 1;
+      const sp = this.spacing(i);
+      q.x = p.x + dx / d * sp; q.y = p.y + dy / d * sp;
+      q.a = Math.atan2(p.y - q.y, p.x - q.x);
+    }
+  }
+  updateJelly(dt, speed) {
+    // pulse locomotion: each contraction of the bell gives a burst of thrust
+    this.phase += dt * (2 + this.t.speed * 1.5);
+    const pulse = Math.max(0, Math.sin(this.phase));
+    const v = speed * (0.25 + 1.9 * pulse * pulse);
+    this.x += Math.cos(this.heading) * v * dt; this.y += Math.sin(this.heading) * v * dt;
+    const L = this.word.length, bx = Math.cos(this.heading), by = Math.sin(this.heading);
+    for (let i = 0; i < L; i++) {
+      const off = (i - (L - 1) / 2) * this.size * 0.62;
+      const s = this.segs[i];
+      s.x = this.x + by * off - bx * this.size * 0.25; s.y = this.y - bx * off - by * this.size * 0.25;
+      s.a = this.heading + Math.PI / 2;
+    }
+    this.segs[0].x = this.x; this.segs[0].y = this.y; // the mouth is the bell's centre
+    this.segs[0].a = this.heading;
+    this.pulse = pulse;
+  }
+  draw(time) {
+    const ink = C.inks[this.ink], ghost = C.inks[(this.ink + 2) % 5];
+    const alpha = (0.32 + 0.68 * clamp(this.energy * 1.8, 0, 1)) * this.born;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    if (this.isJelly) this.drawJelly(time, ink, ghost);
+    else this.drawWorm(time, ink, ghost);
+    ctx.restore();
+  }
+  drawWorm(time, ink, ghost) {
+    const s = this.segs, L = s.length;
+    const ga = ctx.globalAlpha;
+    ctx.strokeStyle = ink; ctx.fillStyle = ink; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.beginPath(); ctx.moveTo(s[0].x, s[0].y);
+    for (let i = 1; i < L; i++) ctx.lineTo(s[i].x, s[i].y);
+    ctx.globalAlpha = ga * 0.09; ctx.lineWidth = this.size * 1.05; ctx.stroke();
+    ctx.globalAlpha = ga * 0.12; ctx.lineWidth = this.size * 0.42; ctx.stroke();
+    // swallowed letters in transit
+    for (const d of this.digest) {
+      const f = d.t * (L - 1), i0 = Math.floor(f), i1 = Math.min(L - 1, i0 + 1), u = f - i0;
+      const x = s[i0].x + (s[i1].x - s[i0].x) * u, y = s[i0].y + (s[i1].y - s[i0].y) * u;
+      ctx.globalAlpha = ga * 0.22; ctx.beginPath(); ctx.arc(x, y, this.size * 0.62, 0, TAU); ctx.fill();
+    }
+    // legs (consonants) and cilia (vowels)
+    ctx.lineWidth = Math.max(0.8, this.size * 0.06);
+    ctx.globalAlpha = ga * 0.55;
+    ctx.beginPath();
+    for (let i = 1; i < L; i++) {
+      const p = s[i], sz = this.segSize(i), ch = this.word[i];
+      const fx = Math.cos(p.a), fy = Math.sin(p.a);
+      const ph = this.phase * 2 - i * 0.9;
+      for (const side of [-1, 1]) {
+        const nx = -fy * side, ny = fx * side;
+        const sw = Math.sin(ph + (side > 0 ? 0 : Math.PI)) * motion;
+        if (isVowel(ch)) {
+          for (let k = -1; k <= 1; k++) {
+            const bx = p.x + nx * sz * 0.42 + fx * k * sz * 0.18, by = p.y + ny * sz * 0.42 + fy * k * sz * 0.18;
+            const tip = sz * 0.36;
+            ctx.moveTo(bx, by);
+            ctx.quadraticCurveTo(bx + nx * tip * 0.6, by + ny * tip * 0.6, bx + nx * tip - fx * tip * (0.5 + 0.5 * sw), by + ny * tip - fy * tip * (0.5 + 0.5 * sw));
+          }
+        } else {
+          const bx = p.x + nx * sz * 0.38, by = p.y + ny * sz * 0.38;
+          const kx = bx + nx * sz * 0.38 + fx * sw * sz * 0.22, ky = by + ny * sz * 0.38 + fy * sw * sz * 0.22;
+          const tx = kx + nx * sz * 0.12 - fx * sz * (0.32 - sw * 0.1), ty = ky + ny * sz * 0.12 - fy * sz * (0.32 - sw * 0.1);
+          ctx.moveTo(bx, by); ctx.lineTo(kx, ky); ctx.lineTo(tx, ty);
+        }
+      }
+    }
+    ctx.stroke();
+    // head: antennae, or mandibles for predators
+    const h = s[0], hs = this.segSize(0), hx = Math.cos(h.a), hy = Math.sin(h.a);
+    const open = this.mouthT > 0 ? 0.35 : 0;
+    ctx.beginPath();
+    for (const side of [-1, 1]) {
+      const nx = -hy * side, ny = hx * side;
+      if (this.isPredator) {
+        const bx = h.x + hx * hs * 0.4 + nx * hs * 0.2, by = h.y + hy * hs * 0.4 + ny * hs * 0.2;
+        const sn = Math.sin(this.phase * 3) * 0.12 * motion + open;
+        ctx.moveTo(bx, by);
+        ctx.quadraticCurveTo(bx + hx * hs * 0.5 + nx * hs * (0.35 + sn), by + hy * hs * 0.5 + ny * hs * (0.35 + sn), bx + hx * hs * 0.75 - nx * hs * (0.05 - sn), by + hy * hs * 0.75 - ny * hs * (0.05 - sn));
+      } else {
+        const w = Math.sin(this.phase * 1.7 + side) * 0.25 * motion + open;
+        const bx = h.x + hx * hs * 0.35 + nx * hs * 0.15, by = h.y + hy * hs * 0.35 + ny * hs * 0.15;
+        ctx.moveTo(bx, by);
+        ctx.quadraticCurveTo(bx + hx * hs * 0.7, by + hy * hs * 0.7, bx + hx * hs * (0.9 + w) + nx * hs * (0.55 + w), by + hy * hs * (0.9 + w) + ny * hs * (0.55 + w));
+      }
+    }
+    ctx.lineWidth = Math.max(0.9, this.size * (this.isPredator ? 0.1 : 0.06));
+    ctx.stroke();
+    ctx.globalAlpha = ga;
+    ctx.font = `${this.weight} 100px ${FONT}`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const decay = this.energy < 0.12 ? (0.12 - this.energy) * 30 * K : 0;
+    for (let i = L - 1; i >= 0; i--) {
+      const p = decay ? { x: s[i].x + rand(-decay, decay), y: s[i].y + rand(-decay, decay), a: s[i].a } : s[i];
+      this.glyph(this.word[i], p, this.segSize(i), ink, ghost, ga);
+    }
+    for (const d of this.digest) {
+      const f = d.t * (L - 1), i0 = Math.floor(f), i1 = Math.min(L - 1, i0 + 1), u = f - i0;
+      this.glyph(d.ch, { x: s[i0].x + (s[i1].x - s[i0].x) * u, y: s[i0].y + (s[i1].y - s[i0].y) * u, a: s[i0].a }, this.size * 0.42, C.dish, ink, ga * 0.9);
+    }
+  }
+  glyph(ch, p, sz, ink, ghost, ga) {
+    ctx.save();
+    ctx.translate(p.x, p.y); ctx.rotate(p.a + Math.PI); ctx.scale(sz / 100, sz / 100);
+    ctx.globalAlpha = ga * 0.38; ctx.fillStyle = ghost; ctx.fillText(ch, 5, 4); // letterpress misregistration
+    ctx.globalAlpha = ga; ctx.fillStyle = ink; ctx.fillText(ch, 0, 0);
+    ctx.restore();
+  }
+  drawJelly(time, ink, ghost) {
+    const ga = ctx.globalAlpha, sz = this.size, pulse = this.pulse || 0;
+    const bellR = sz * (1.05 - 0.15 * pulse * motion);
+    ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.heading + Math.PI / 2);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, bellR * (1 + 0.12 * pulse * motion), bellR * 0.95, 0, Math.PI, TAU);
+    ctx.quadraticCurveTo(0, bellR * 0.35, -bellR * (1 + 0.12 * pulse * motion), 0);
+    ctx.fillStyle = ink; ctx.globalAlpha = ga * (0.12 + this.digest.length * 0.08); ctx.fill();
+    ctx.strokeStyle = ink; ctx.globalAlpha = ga * 0.5; ctx.lineWidth = Math.max(0.8, sz * 0.05); ctx.stroke();
+    ctx.beginPath();
+    const n = 3 + this.word.length;
+    for (let k = 0; k < n; k++) {
+      const x0 = (k / (n - 1) - 0.5) * bellR * 1.6;
+      ctx.moveTo(x0, bellR * 0.1);
+      for (let j = 1; j <= 6; j++) ctx.lineTo(x0 + Math.sin(this.phase * 1.2 - j * 0.8 + k) * sz * 0.036 * j * motion, bellR * 0.1 + j * sz * 0.28);
+    }
+    ctx.globalAlpha = ga * 0.4; ctx.stroke();
+    ctx.restore();
+    ctx.globalAlpha = ga;
+    ctx.font = `${this.weight} 100px ${FONT}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const L = this.word.length, bx = Math.cos(this.heading), by = Math.sin(this.heading);
+    for (let i = 0; i < L; i++) {
+      const off = (i - (L - 1) / 2) * sz * 0.62;
+      this.glyph(this.word[i], { x: this.x + by * off - bx * sz * 0.25, y: this.y - bx * off - by * sz * 0.25, a: this.heading + Math.PI / 2 }, sz * 0.9, ink, ghost, ga);
+    }
+  }
+}
+
+class Food {
+  constructor(ch, x, y, vx = 0, vy = 0, fromBody = false) {
+    this.ch = ch; this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+    this.rot = rand(TAU); this.vr = rand(-0.6, 0.6); this.ph = rand(TAU); this.age = 0;
+    this.eatenBy = null; this.t = 0; this.gone = false; this.fromBody = fromBody;
+  }
+  update(dt, time) {
+    this.age += dt;
+    if (this.eatenBy) {
+      const c = this.eatenBy;
+      if (c.dead) { this.eatenBy = null; return; }
+      this.t += dt * 5;
+      const h = c.head;
+      this.x += (h.x - this.x) * Math.min(1, this.t * 0.9); this.y += (h.y - this.y) * Math.min(1, this.t * 0.9);
+      if (this.t >= 1) { this.gone = true; c.feed(this.ch); sfx.crunch(); burst(h.x, h.y, C.food, 4, 26); }
+      return;
+    }
+    this.vx += (Math.sin(time * 0.4 + this.ph) * 4 * K - this.vx * 1.2) * dt;
+    this.vy += (K * 5 - this.vy * 1.2) * dt; // slow sinking plankton
+    this.x += this.vx * dt * motion + Math.sin(time * 0.9 + this.ph) * 4 * dt * motion;
+    this.y += this.vy * dt * motion;
+    this.rot += this.vr * dt * motion;
+    const dx = this.x - dish.x, dy = this.y - dish.y, d = Math.hypot(dx, dy);
+    if (d > dish.r - 4) {
+      if (dy > 0 && Math.abs(dx) < dish.r * 0.8 && this.vy > 0) {
+        // sank to the floor of the dish: a slow current lifts it back to the top
+        const x = dish.x + rand(-0.6, 0.6) * dish.r;
+        this.x = x; this.y = dish.y - Math.sqrt(Math.max(0, (dish.r - 10) ** 2 - (x - dish.x) ** 2)); this.age = 0;
+      } else { this.x = dish.x + dx / d * (dish.r - 4); this.y = dish.y + dy / d * (dish.r - 4); this.vx *= -0.5; }
+    }
+  }
+  draw() {
+    const a = clamp(this.age * 1.5, 0, 1);
+    ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.rot);
+    if (this.eatenBy) { const k = 1 - this.t * 0.6; ctx.scale(k, k); }
+    ctx.globalAlpha = 0.75 * a; ctx.fillStyle = this.fromBody && this.age < 6 ? C.text : C.food; ctx.fillText(this.ch, 0, 0);
+    ctx.restore();
+  }
+}
+
+function foodTarget() { return Math.round(clamp(dish.r * dish.r / 1700, 40, 110)); }
+function spawnFood(n, top = false) {
+  for (let i = 0; i < n; i++) {
+    let p;
+    if (top) { const x = dish.x + rand(-0.7, 0.7) * dish.r; p = { x, y: dish.y - Math.sqrt(Math.max(0, (dish.r - 12) ** 2 - (x - dish.x) ** 2)) + rand(0, 30) }; }
+    else p = randomInDish(0.9);
+    food.push(new Food(randomLetter(), p.x, p.y));
+  }
+}
+
+function logBirth(word, gen, how) {
+  if (seen.has(word)) return;
+  seen.add(word); stats.born++;
+  const ol = $("#log");
+  const empty = ol.querySelector(".empty"); if (empty) empty.remove();
+  const li = document.createElement("li");
+  const b = document.createElement("b"); b.textContent = word;
+  const g = document.createElement("span"); g.textContent = `gen ${gen}`;
+  const k = document.createElement("span"); k.className = "kin"; k.textContent = how;
+  li.append(b, g, k);
+  ol.prepend(li);
+  while (ol.children.length > 40) ol.lastChild.remove();
+}
+
+function release(word, x, y, o = {}) {
+  const c = new Creature(word, x, y, o);
+  creatures.push(c);
+  seen.add(word);
+  return c;
+}
+function birth(word, x, y, gen, parents, how) {
+  logBirth(word, gen, how);
+  const c = release(word, x, y, { gen, parents, energy: 0.7, heading: rand(TAU) });
+  stats.maxGen = Math.max(stats.maxGen, gen);
+  ripples.push({ x, y, t: 0, col: C.inks[c.ink] });
+  sfx.chime(word);
+  return c;
+}
+
+// ---- ecology: eating, biting, mating, budding ----
+function ecology(dt) {
+  const cap = popCap();
+  for (const c of creatures) {
+    if (c.dead) continue;
+    const h = c.head, mouth = c.segSize(0) * 0.85 + 4 * K;
+    // personal space: heads drift apart unless courting or hunting
+    for (const o of creatures) {
+      if (o === c || o.dead || o === c.mate || o === c.prey) continue;
+      const dx = h.x - o.head.x, dy = h.y - o.head.y, d2 = dx * dx + dy * dy, R = (c.size + o.size) * 1.6;
+      if (d2 < R * R && d2 > 0.01) { const push = (1 - Math.sqrt(d2) / R) * 30 * K * dt; const d = Math.sqrt(d2); c.x += dx / d * push; c.y += dy / d * push; }
+    }
+    // eat loose letters
+    for (const f of food) {
+      if (f.eatenBy || f.gone || f.age < 0.4) continue;
+      if (Math.abs(f.x - h.x) < mouth && Math.abs(f.y - h.y) < mouth && dist(f, h) < mouth) {
+        if (c.digest.length < 3) { f.eatenBy = c; f.t = 0; }
+      }
+    }
+    // bite a letter off another creature's tail
+    if (c.prey && !c.prey.dead && c.biteCd <= 0) {
+      const v = c.prey, tail = v.segs[v.segs.length - 1];
+      if (dist(tail, h) < mouth + v.segSize(v.segs.length - 1) * 0.5) {
+        c.biteCd = 1.6;
+        if (Math.random() < 0.45 + c.t.bite - v.t.armour * 0.5) {
+          const ch = v.word[v.word.length - 1];
+          const f = new Food(ch, tail.x, tail.y, 0, 0, true); f.eatenBy = c; f.age = 1; food.push(f);
+          if (v.word.length <= 1) v.die(); else { v.word = v.word.slice(0, -1); v.rebuild(); }
+          v.fleeT = 1.6; v.fleeFrom = h; v.energy -= 0.05;
+          burst(tail.x, tail.y, C.inks[v.ink], 6, 50);
+          sfx.bite();
+        } else { v.fleeT = 1.2; v.fleeFrom = h; }
+        c.prey = null; c.thinkT = 0.5;
+      }
+    }
+    if (creatures.length >= cap || c.reproCd > 0) continue;
+    // budding: a long, fed body splits, the tail half grows into a child
+    const L = c.word.length, splitAt = 9 + Math.round(c.t.armour * 2);
+    if (L >= splitAt && c.energy > 0.7) {
+      const keep = Math.ceil(L / 2), tailHalf = c.word.slice(keep);
+      const child = breed(tailHalf + c.word.slice(0, 2), c.word, RNG);
+      const t = c.segs[c.segs.length - 1];
+      c.word = c.word.slice(0, keep); c.rebuild();
+      c.energy -= 0.3; c.reproCd = 10 + rand(6); c.children++;
+      const k = birth(child, t.x, t.y, c.gen + 1, c.word + tailHalf, `budded from ${c.word + tailHalf}`);
+      k.heading = c.heading + Math.PI + rand(-0.6, 0.6); k.wander = k.heading;
+      continue;
+    }
+    // mating: two fed creatures whose heads touch
+    if (L >= 5 && c.energy > 0.55) {
+      for (const o of creatures) {
+        if (o === c || o.dead || o.reproCd > 0 || o.word.length < 5 || o.energy < 0.55) continue;
+        if (dist(o.head, h) > (c.size + o.size) * 1.5) continue;
+        if (Math.random() > dt * 5) continue;
+        const word = breed(c.word, o.word, RNG);
+        const pa = c.word, pb = o.word;
+        for (const p of [c, o]) {
+          p.energy -= 0.22; p.reproCd = 12 + rand(8); p.children++;
+          if (p.word.length > 4) { p.word = p.word.slice(0, -2); p.rebuild(); }
+        }
+        const mx = (h.x + o.head.x) / 2, my = (h.y + o.head.y) / 2;
+        birth(word, mx, my, Math.max(c.gen, o.gen) + 1, `${pa} × ${pb}`, `from ${pa} × ${pb}`);
+        break;
+      }
+    }
+  }
+}
+
+let condenseT = 3;
+function housekeeping(dt) {
+  for (let i = creatures.length - 1; i >= 0; i--) if (creatures[i].dead) creatures.splice(i, 1);
+  for (let i = food.length - 1; i >= 0; i--) if (food[i].gone) food.splice(i, 1);
+  if (food.length < foodTarget() && Math.random() < dt * 2.6) spawnFood(1, Math.random() < 0.3);
+  // the dish never empties: loose letters condense into a fresh creature
+  condenseT -= dt;
+  if (creatures.length < 4 && condenseT <= 0) {
+    condenseT = 5;
+    const pool = [...seen];
+    const base = pool.length ? pool[(Math.random() * pool.length) | 0] : "moss";
+    const w = breed(base, randomLetter() + randomLetter() + randomLetter(), RNG);
+    const p = randomInDish(0.5);
+    birth(w, p.x, p.y, 1, null, "condensed from loose letters");
+  }
+  for (let i = crumbs.length - 1; i >= 0; i--) {
+    const k = crumbs[i]; k.life -= dt; k.x += k.vx * dt; k.y += k.vy * dt; k.vx *= 0.92; k.vy *= 0.92;
+    if (k.life <= 0) crumbs.splice(i, 1);
+  }
+  for (let i = ripples.length - 1; i >= 0; i--) { ripples[i].t += dt; if (ripples[i].t > 1.4) ripples.splice(i, 1); }
+}
+
+// ---- sound (stub until enabled) ----
+// Synthesised only after the Sound button is pressed (a user gesture).
+const audio = { ctx: null, on: false, out: null, noise: null, lastCrunch: 0, lastChime: 0 };
+const FORMANTS = { a: [800, 1200], e: [420, 2100], i: [300, 2600], o: [500, 880], u: [340, 720], y: [300, 2300] };
+const PENTA = [0, 2, 4, 7, 9, 12, 14, 16];
+function audioInit() {
+  const A = window.AudioContext || window.webkitAudioContext;
+  if (!A) return false;
+  const a = (audio.ctx = new A());
+  const comp = a.createDynamicsCompressor();
+  audio.out = a.createGain(); audio.out.gain.value = 0.22;
+  audio.out.connect(comp); comp.connect(a.destination);
+  const buf = a.createBuffer(1, a.sampleRate * 0.6, a.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  audio.noise = buf;
+  return true;
+}
+function env(g, t, peak, att, dec) {
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak, t + att);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + att + dec);
+}
+function noiseHit(t, type, freq, q, peak, dec) {
+  const a = audio.ctx, src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+  src.buffer = audio.noise; f.type = type; f.frequency.value = freq; f.Q.value = q;
+  src.connect(f); f.connect(g); g.connect(audio.out);
+  env(g, t, peak, 0.004, dec); src.start(t, Math.random() * 0.3); src.stop(t + dec + 0.05);
+}
+function wordPitch(word) { let h = 0; for (const ch of word) h = (h * 7 + ch.charCodeAt(0)) % 997; return 110 * Math.pow(2, PENTA[h % 5] / 12); }
+const sfx = {
+  ready() { return audio.on && audio.ctx && audio.ctx.state === "running"; },
+  hum(word, vol = 1) {
+    if (!this.ready()) return;
+    const a = audio.ctx, base = wordPitch(word);
+    let t = a.currentTime + 0.02;
+    for (const ch of word.slice(0, 9)) {
+      if (isVowel(ch)) {
+        const o = a.createOscillator(), g = a.createGain();
+        o.type = "sawtooth"; o.frequency.setValueAtTime(base, t); o.frequency.linearRampToValueAtTime(base * 1.03, t + 0.14);
+        for (const fq of FORMANTS[ch]) {
+          const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = fq; f.Q.value = 9;
+          o.connect(f); f.connect(g);
+        }
+        g.connect(audio.out); env(g, t, 0.5 * vol, 0.02, 0.16);
+        o.start(t); o.stop(t + 0.22);
+        t += 0.13;
+      } else {
+        noiseHit(t, "bandpass", 900 + (ch.charCodeAt(0) - 97) * 230, 4, 0.18 * vol, 0.045);
+        t += 0.06;
+      }
+    }
+  },
+  crunch() {
+    if (!this.ready()) return;
+    const a = audio.ctx; if (a.currentTime - audio.lastCrunch < 0.07) return; audio.lastCrunch = a.currentTime;
+    const t = a.currentTime + 0.005;
+    noiseHit(t, "highpass", 2200 + Math.random() * 1500, 0.7, 0.16, 0.03);
+    noiseHit(t + 0.035, "highpass", 1800, 0.7, 0.08, 0.025);
+  },
+  bite() {
+    if (!this.ready()) return;
+    const a = audio.ctx, t = a.currentTime + 0.005, o = a.createOscillator(), g = a.createGain();
+    o.type = "triangle"; o.frequency.setValueAtTime(260, t); o.frequency.exponentialRampToValueAtTime(70, t + 0.12);
+    o.connect(g); g.connect(audio.out); env(g, t, 0.3, 0.003, 0.14); o.start(t); o.stop(t + 0.2);
+    noiseHit(t, "bandpass", 1200, 1.5, 0.2, 0.06);
+  },
+  chime(word) {
+    if (!this.ready()) return;
+    const a = audio.ctx; if (a.currentTime - audio.lastChime < 0.25) return; audio.lastChime = a.currentTime;
+    const base = wordPitch(word) * 4, t = a.currentTime + 0.01;
+    [0, 1].forEach((k) => {
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = "sine"; o.frequency.value = base * Math.pow(2, PENTA[(word.length + k * 3) % PENTA.length] / 12);
+      o.connect(g); g.connect(audio.out); env(g, t + k * 0.09, 0.14, 0.006, 1.3); o.start(t + k * 0.09); o.stop(t + 1.5);
+    });
+    this.hum(word, 0.45);
+  },
+  crumble() {
+    if (!this.ready()) return;
+    const t = audio.ctx.currentTime + 0.01;
+    for (let k = 0; k < 4; k++) noiseHit(t + k * 0.05, "lowpass", 700 - k * 120, 0.8, 0.12, 0.12);
+  }
+};
+let murmurT = 6;
+function murmur(dt) {
+  murmurT -= dt;
+  if (murmurT > 0) return;
+  murmurT = 6 + rand(6);
+  const c = creatures[(Math.random() * creatures.length) | 0];
+  if (c) sfx.hum(c.word, 0.35);
+}
+$("#snd").addEventListener("click", (e) => {
+  const b = e.currentTarget;
+  if (!audio.ctx && !audioInit()) { b.textContent = "No sound here"; b.disabled = true; return; }
+  audio.on = !audio.on;
+  if (audio.on) audio.ctx.resume().then(() => sfx.hum("hello", 0.6));
+  b.setAttribute("aria-pressed", audio.on); b.textContent = audio.on ? "Sound on" : "Sound";
+});
+
+// ---- interaction ----
+let selected = null, hovered = null;
+function creatureAt(x, y) {
+  let best = null, bd = Infinity;
+  for (const c of creatures) for (let i = 0; i < c.segs.length; i++) {
+    const s = c.segs[i], d = Math.hypot(s.x - x, s.y - y);
+    if (d < Math.max(18, c.segSize(i) * 0.9) && d < bd) { bd = d; best = c; }
+  }
+  return best;
+}
+let drag = null;
+cv.addEventListener("pointerdown", (e) => {
+  cv.setPointerCapture(e.pointerId);
+  drag = { x: e.clientX, y: e.clientY, moved: 0, onCreature: creatureAt(e.clientX, e.clientY), acc: 0 };
+});
+cv.addEventListener("pointermove", (e) => {
+  if (!drag) {
+    if (e.pointerType === "mouse") { hovered = creatureAt(e.clientX, e.clientY); cv.style.cursor = hovered ? "pointer" : "crosshair"; }
+    return;
+  }
+  const d = Math.hypot(e.clientX - drag.x, e.clientY - drag.y);
+  drag.moved += d; drag.acc += d;
+  if (drag.moved > 8) {
+    while (drag.acc > 16) {
+      drag.acc -= 16;
+      const dx = e.clientX - dish.x, dy = e.clientY - dish.y;
+      if (Math.hypot(dx, dy) < dish.r - 6 && food.length < 260) food.push(new Food(randomLetter(), e.clientX + rand(-6, 6), e.clientY + rand(-6, 6), (e.clientX - drag.x) * 3, (e.clientY - drag.y) * 3));
+    }
+  }
+  drag.x = e.clientX; drag.y = e.clientY;
+});
+cv.addEventListener("pointerup", () => {
+  if (drag && drag.moved <= 8) { selected = drag.onCreature || null; renderCard(true); if (selected) sfx.hum(selected.word); }
+  drag = null;
+});
+cv.addEventListener("pointercancel", () => { drag = null; });
+cv.addEventListener("pointerleave", () => { hovered = null; });
+
+const input = $("#word-input");
+$("#feed").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const w = cleanWord(input.value);
+  if (w.length < 1) { input.focus(); return; }
+  const a = rand(TAU);
+  const c = release(w, dish.x + Math.cos(a) * dish.r * 0.2, dish.y + Math.sin(a) * dish.r * 0.2, { heading: a, energy: 1 });
+  c.boost = 2.2; setTimeout(() => (c.boost = 1), 900);
+  ripples.push({ x: c.x, y: c.y, t: 0, col: C.inks[c.ink] });
+  sfx.hum(w);
+  while (creatures.length > popCap()) { const old = creatures.find((k) => k !== c && !k.dead); if (!old) break; old.die(); creatures.splice(creatures.indexOf(old), 1); }
+  input.value = "";
+});
+
+// ---- card ----
+const card = $("#card");
+let cardTick = 0, cardFor = null;
+function renderCard(force) {
+  const c = selected && !selected.dead ? selected : hovered && !hovered.dead ? hovered : null;
+  if (!c) { card.hidden = true; cardFor = null; return; }
+  const t = c.t;
+  if (force || cardTick <= 0 || cardFor !== c) {
+    cardTick = 0.25; cardFor = c;
+    const bar = (v) => `<dd><i style="width:${Math.round(clamp(v, 0, 1) * 100)}%"></i></dd>`;
+    const state = c.energy <= 0.01 ? "starving, shedding letters" : c.isPredator ? "a biter" : c.isJelly ? "a drifting bell" : "a grazer";
+    card.innerHTML = `<p class="nm" style="color:${C.inks[c.ink]}">${c.word}</p>
+      <div class="meta">generation ${c.gen}, ${c.parents ? `of ${c.parents}` : "released by hand"}; ${state}</div>
+      <dl><dt>Speed</dt>${bar((t.speed - 0.55) / 1.2)}<dt>Armour</dt>${bar(t.armour)}<dt>Appetite</dt>${bar((t.appetite - 1) / 1.5)}<dt>Bite</dt>${bar(t.bite)}<dt>Energy</dt>${bar(c.energy)}</dl>
+      <div class="facts">${c.eaten} letters eaten, ${c.children} ${c.children === 1 ? "child" : "children"}</div>`;
+    card.hidden = false;
+  }
+  const h = c.head;
+  let x = h.x + 24, y = h.y - 40;
+  const cw = card.offsetWidth || 210, ch = card.offsetHeight || 150;
+  if (x + cw > W - 8) x = h.x - cw - 24;
+  x = clamp(x, 8, W - cw - 8); y = clamp(y, 8, H - ch - 8);
+  card.style.left = x + "px"; card.style.top = y + "px";
+}
+
+// ---- controls ----
+let paused = false;
+$("#pause").addEventListener("click", (e) => { paused = !paused; e.currentTarget.setAttribute("aria-pressed", paused); e.currentTarget.textContent = paused ? "Resume" : "Pause"; });
+function syncThemeButton() { $("#theme").textContent = isDarkTheme() ? "Brightfield" : "Darkfield"; }
+$("#theme").addEventListener("click", () => {
+  document.documentElement.dataset.theme = isDarkTheme() ? "light" : "dark";
+  readTokens(); syncThemeButton();
+});
+
+// ---- loop ----
+function step(dt, time) {
+  for (const c of creatures) if (!c.dead) c.update(dt, time);
+  for (const f of food) if (!f.gone) f.update(dt, time);
+  ecology(dt);
+  housekeeping(dt);
+  murmur(dt);
+}
+let last = performance.now(), time = 0, statTick = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!paused) { const sdt = dt * (motion < 1 ? 0.6 : 1); time += sdt; step(sdt, time); }
+  if (bgDirty) paintBackground();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(bg, 0, 0);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(dish.x, dish.y, dish.r + 2, 0, TAU); ctx.clip();
+  for (const r of ripples) {
+    ctx.globalAlpha = (1 - r.t / 1.4) * 0.5; ctx.strokeStyle = r.col; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(r.x, r.y, (10 + r.t * 70) * K, 0, TAU); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.font = `400 ${Math.round(13 * K)}px ${FONT}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const f of food) if (!f.gone) f.draw();
+  for (const c of creatures) if (!c.dead) c.draw(time);
+  for (const k of crumbs) { ctx.globalAlpha = clamp(k.life / k.max, 0, 1) * 0.7; ctx.fillStyle = k.col; ctx.fillRect(k.x, k.y, k.r, k.r); }
+  ctx.globalAlpha = 1;
+  if (selected && !selected.dead) {
+    const h = selected.head;
+    ctx.strokeStyle = C.text; ctx.globalAlpha = 0.5; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+    ctx.beginPath(); ctx.arc(h.x, h.y, selected.size * 1.4, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+  cardTick -= dt; renderCard(false);
+  statTick -= dt;
+  if (statTick <= 0) {
+    statTick = 0.5;
+    $("#stats").textContent = `${creatures.length} alive, ${stats.born} words born, deepest generation ${stats.maxGen}`;
+  }
+  requestAnimationFrame(frame);
+}
+
+// ---- seed: the first frame is already alive ----
+readTokens(); syncThemeButton();
+layout();
+addEventListener("resize", layout);
+spawnFood(foodTarget()); food.forEach((f) => (f.age = 1));
+["ocean", "hunger", "moss", "ink", "quiver", "lull"].forEach((w, i) => {
+  const a = i / 6 * TAU + 0.4, p = { x: dish.x + Math.cos(a) * dish.r * 0.45, y: dish.y + Math.sin(a) * dish.r * 0.45 };
+  release(w, p.x, p.y, { heading: a + Math.PI / 2, instant: true });
+});
+for (let k = 0; k < 45; k++) for (const c of creatures) c.update(1 / 30, k / 30);
+requestAnimationFrame(frame);
+document.fonts.load(`600 100px "Bricolage Grotesque"`).then(() => document.fonts.ready).then(() => { measureGlyphs(); layout(); }).catch(() => {});
+</script>
