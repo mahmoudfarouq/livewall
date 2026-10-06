@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and smoke test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build (universal, release)
+        run: |
+          swift build -c release --arch arm64 --arch x86_64
+          echo "BIN=$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/livewall" >> "$GITHUB_ENV"
+
+      - name: Smoke test
+        run: |
+          bin="$BIN"
+          lipo -info "$bin"
+          "$bin" --version
+          "$bin" --help > /dev/null
+          "$bin" presets | tee presets.txt
+          test "$(wc -l < presets.txt)" -eq "$(ls presets/*.html | wc -l)"
+          # unknown commands and missing presets must fail
+          if "$bin" nope 2>/dev/null; then echo "unknown command succeeded"; exit 1; fi
+          if "$bin" set no-such-preset 2>/dev/null; then echo "missing preset succeeded"; exit 1; fi
+
+      - name: Install script
+        run: |
+          PREFIX="$RUNNER_TEMP/prefix" sh scripts/install.sh "$BIN"
+          "$RUNNER_TEMP/prefix/bin/livewall" --version
+          test "$(ls "$RUNNER_TEMP/prefix/share/livewall/presets" | wc -l)" -eq "$(ls presets/*.html | wc -l)"
+
+  presets:
+    name: Check presets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Every preset has a title and the charset meta
+        run: |
+          fail=0
+          for f in presets/*.html; do
+            head -c 8192 "$f" | grep -qi '<title>[^<]\+</title>' || { echo "::error file=$f::missing <title> in the first 8 KB"; fail=1; }
+            head -c 1024 "$f" | grep -qi '<meta charset=' || { echo "::error file=$f::missing <meta charset> in the first 1 KB"; fail=1; }
+          done
+          exit $fail
+      - name: ShellCheck
+        run: shellcheck scripts/install.sh

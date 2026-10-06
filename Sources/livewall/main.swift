@@ -63,6 +63,7 @@ enum CLI {
       livewall stop                          remove it
       livewall status                        show what is running
       livewall reload                        reload the page(s)
+      livewall --version
       livewall --help
 
     set options:
@@ -148,6 +149,7 @@ case "presets", "list": Presets.list()
 case "status": CLI.status()
 case "reload": CLI.reload()
 case "daemon": Daemon.run(Array(args.dropFirst())) // hidden: what `set` re-execs
+case "-v", "--version", "version": print("livewall \(livewallVersion)")
 case nil, "-h", "--help", "help": print(CLI.usage)
 default: fail("unknown command '\(args[0])', see livewall --help")
 }

@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stamp the version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          printf '/// Replaced with the tag by the release workflow.\nlet livewallVersion = "%s"\n' "$version" > Sources/livewall/Version.swift
+
+      - name: Build (universal, release)
+        run: |
+          swift build -c release --arch arm64 --arch x86_64
+          echo "BIN=$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/livewall" >> "$GITHUB_ENV"
+
+      - name: Package
+        run: |
+          name="livewall"
+          mkdir -p "dist/$name/scripts"
+          cp "$BIN" "dist/$name/"
+          cp -R presets "dist/$name/"
+          cp scripts/install.sh "dist/$name/scripts/"
+          cp README.md LICENSE "dist/$name/"
+          "dist/$name/livewall" --version | grep -qx "livewall $VERSION"
+          tar -C dist -czf "dist/livewall-macos-universal.tar.gz" "$name"
+          (cd dist && shasum -a 256 livewall-macos-universal.tar.gz > livewall-macos-universal.tar.gz.sha256)
+          echo "ARCHIVE=dist/livewall-macos-universal.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$ARCHIVE" "$ARCHIVE.sha256" \
+            --title "livewall $VERSION" --generate-notes --verify-tag

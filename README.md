@@ -1,5 +1,8 @@
 # livewall
 
+[![CI](https://github.com/mahmoudfarouq/livewall/actions/workflows/ci.yml/badge.svg)](https://github.com/mahmoudfarouq/livewall/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/mahmoudfarouq/livewall)](https://github.com/mahmoudfarouq/livewall/releases/latest)
+
 A tiny macOS command-line tool that shows an HTML page as your live desktop wallpaper,
 on every screen. Hold a modifier key (Option by default) to click, drag and scroll the page;
 let go and it is wallpaper again. No app, no menu bar item, no permission prompts.
@@ -9,25 +12,36 @@ It comes with a set of hand-made pages (presets), and takes any local file or UR
 livewall set night-city
 ```
 
-## Requirements
+## Install
 
-- macOS 13 or later
-- A Swift toolchain (Xcode or the Command Line Tools, Swift 5.9+)
-
-Only AppKit and WebKit are used; there are no third-party dependencies.
-
-## Build and install
+### From a release (no Swift needed)
 
 ```sh
-git clone <this repo> && cd livewall
+curl -fsSL https://github.com/mahmoudfarouq/livewall/releases/latest/download/livewall-macos-universal.tar.gz | tar -xz
+cd livewall && sh scripts/install.sh
+```
+
+Each [release](https://github.com/mahmoudfarouq/livewall/releases) has a universal binary
+(Apple silicon and Intel) with the presets, and a `.sha256` checksum. The installer copies the
+binary to `~/.local/bin/livewall` and the presets to `~/.local/share/livewall/presets`, for
+your user only (no sudo). Make sure `~/.local/bin` is on your `PATH`.
+
+The binary isn't notarized. If you download the archive with a browser, macOS quarantines it;
+the installer clears that flag on the installed copy.
+
+### From source
+
+Requires macOS 13 or later and a Swift toolchain (Xcode or the Command Line Tools, Swift 5.9+).
+Only AppKit and WebKit are used; there are no third-party dependencies.
+
+```sh
+git clone https://github.com/mahmoudfarouq/livewall.git && cd livewall
 make install
 ```
 
-`make install` builds a release binary and copies it to `~/.local/bin/livewall`, and the
-presets to `~/.local/share/livewall/presets`. It installs for your user only (no sudo); make
-sure `~/.local/bin` is on your `PATH`. `make uninstall` removes both. To build without
-installing, run `swift build -c release` and use `.build/release/livewall`, which finds the
-presets in the repo.
+`make install` builds a release binary and runs the same installer. `make uninstall` removes
+both. To build without installing, run `swift build -c release` and use
+`.build/release/livewall`, which finds the presets in the repo.
 
 livewall doesn't add itself to login items. To start it at login, run `livewall set …` from
 your shell profile or a login item.
@@ -42,6 +56,7 @@ your shell profile or a login item.
 | `livewall stop` | stops it |
 | `livewall status` | url, key, screens, pid and log path of the running daemon |
 | `livewall reload` | reloads the page on every screen (e.g. after editing the file) |
+| `livewall --version` | the installed version |
 | `livewall --help` | usage |
 
 ```sh
@@ -58,7 +73,7 @@ Options for `set`:
   frame rate itself; WebKit renders at the display's refresh rate.
 - `--wallpaper-hash` / `--no-wallpaper-hash`: local files and presets get `#wallpaper`
   appended by default (unless the URL already has a fragment), so a page can switch to a
-  calmer wallpaper mode. Newer pieces read it; the first four presets ignore it for now.
+  calmer wallpaper mode. Newer pieces read it; ink-water, night-city, pocket-universe and word-creatures ignore it for now.
 
 An existing path or URL always wins over a preset name. A local path becomes a `file://` URL
 with read access to its folder, so relative assets load.
@@ -71,9 +86,12 @@ closing the terminal does not kill it. It keeps `state.json`, `livewall.pid` and
 
 | slug | title |
 | --- | --- |
+| `dream-archive` | Dream Archive |
 | `ink-water` | Floating Ink |
+| `mycelium` | The Wood Wide Web |
 | `night-city` | Lights Left On |
 | `pocket-universe` | Pocket Universe |
+| `weather-jar` | Weather in a Jar |
 | `word-creatures` | Living Type Specimen |
 
 Each preset is one self-contained HTML file in `presets/`, named `<slug>.html`
@@ -129,6 +147,22 @@ presets in this order, and the first match wins:
   their wallpaper mode light.
 - If focus doesn't come back to the app you were in after release, click it once. macOS 14+
   can refuse activation requests from background apps.
+
+## Development
+
+CI builds a universal binary on every push and pull request, smoke-tests the CLI and the
+installer, and checks that every preset has a `<title>` and a charset.
+
+To cut a release, tag `main` and push the tag:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The release workflow stamps the version into the binary (`livewall --version`), builds it,
+packages `livewall-macos-universal.tar.gz` (the same name every release, so the
+`latest/download` link above always works) with the presets, the installer, the
+README and the license, and publishes a GitHub release with generated notes and a checksum.
 
 ## License
 
