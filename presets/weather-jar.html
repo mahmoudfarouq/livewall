@@ -1,0 +1,1090 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Weather in a Jar</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500&display=swap');
+:root{
+  color-scheme: dark;
+  --wall:#3f4a46;
+  --wall-deep:#232b29;
+  --ink:#e3e6df;
+  --ink-soft:rgba(227,230,223,.68);
+  --pane:rgba(24,30,28,.52);
+  --pane-line:rgba(227,230,223,.16);
+  --pane-on:rgba(214,226,232,.18);
+  --focus:#f0d48a;
+  --seal:#d4642a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--wall-deep);color:var(--ink)}
+body{font-family:'Schibsted Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:default}
+#gl.over{cursor:grab}
+#gl.drag{cursor:grabbing}
+.ui{position:fixed;inset:0;pointer-events:none}
+.controls{position:absolute;top:max(14px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right));display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;pointer-events:auto}
+button.tog{font:500 14px/1 inherit;font-family:inherit;color:var(--ink);background:var(--pane);border:1px solid var(--pane-line);border-radius:999px;padding:10px 15px;min-height:40px;cursor:pointer;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);transition:background .2s,border-color .2s}
+button.tog:hover{border-color:rgba(227,230,223,.34)}
+button.tog[aria-pressed="true"]{background:var(--pane-on);border-color:rgba(214,226,232,.42)}
+button.tog .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:8px;vertical-align:1px;background:rgba(227,230,223,.3)}
+button.tog[aria-pressed="true"] .dot{background:#cfe3ec;box-shadow:0 0 8px #cfe3ec}
+:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+.readout{position:absolute;left:max(16px,env(safe-area-inset-left));bottom:max(16px,env(safe-area-inset-bottom));max-width:min(340px,calc(100vw - 32px));pointer-events:none}
+.readout .state{margin:0 0 4px;font-size:clamp(17px,2.1vw,21px);font-weight:500;line-height:1.2;letter-spacing:-.005em;text-shadow:0 1px 12px rgba(0,0,0,.5)}
+.readout .sub{margin:0;font-size:14px;line-height:1.45;color:var(--ink-soft);text-shadow:0 1px 10px rgba(0,0,0,.5)}
+.hint{position:absolute;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));max-width:300px;margin:0;font-size:14px;line-height:1.45;color:var(--ink-soft);text-align:right;transition:opacity 1.2s;text-shadow:0 1px 10px rgba(0,0,0,.6)}
+.hint.gone{opacity:0}
+.jar-key{position:absolute;pointer-events:none;background:transparent;border:0;padding:0;border-radius:28px;color:transparent}
+.jar-key:focus-visible{outline:2px dashed var(--focus);outline-offset:6px}
+.nogl{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);max-width:300px;text-align:center;font-size:15px;color:var(--ink-soft)}
+@media (max-width:560px){
+  .hint{left:max(16px,env(safe-area-inset-left));right:auto;text-align:left;bottom:auto;top:max(64px,calc(env(safe-area-inset-top) + 56px));max-width:240px}
+  button.tog{font-size:13px;padding:9px 13px}
+}
+.wallpaper .ui{display:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+</style>
+<canvas id="gl" aria-hidden="true"></canvas>
+<div class="ui">
+  <div class="controls" role="group" aria-label="Jar controls">
+    <button class="tog" id="snd" aria-pressed="false"><span class="dot"></span>Sound</button>
+    <button class="tog" id="win" aria-pressed="false"><span class="dot"></span>Open the window</button>
+  </div>
+  <button class="jar-key" id="jarKey" aria-label="The jar. Left and right arrows tip it, S shakes it, hold Enter to warm it in your hands."></button>
+  <div class="readout" aria-live="polite">
+    <p class="state" id="state">Fair-weather cumulus</p>
+    <p class="sub" id="wind">Force 2, light breeze</p>
+    <p class="sub" id="temp">17 °C inside the jar</p>
+  </div>
+  <p class="hint" id="hint">Shake the jar to brew a storm. Hold it still to warm it. Tip it slowly to slosh the sea.</p>
+</div>
+<script>
+(() => {
+'use strict';
+const WALL = location.hash === '#wallpaper';
+if (WALL) document.documentElement.classList.add('wallpaper');
+const RM = matchMedia('(prefers-reduced-motion: reduce)');
+let reduced = RM.matches;
+(RM.addEventListener ? RM.addEventListener('change', e => reduced = e.matches) : RM.addListener(e => reduced = e.matches));
+
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl', {antialias:false, alpha:false, depth:false, stencil:false, premultipliedAlpha:false, preserveDrawingBuffer:false, powerPreference:'high-performance'})
+        || canvas.getContext('experimental-webgl');
+if (!gl) {
+  const m = document.createElement('p'); m.className = 'nogl';
+  m.textContent = 'This jar needs WebGL to hold its weather. Try another browser.';
+  document.querySelector('.ui').appendChild(m);
+  return;
+}
+
+/* ---------------- shader ---------------- */
+const VS = `attribute vec2 a; void main(){ gl_Position = vec4(a,0.0,1.0); }`;
+const FS = `
+precision highp float;
+uniform vec2 uRes;
+uniform sampler2D uBg;
+uniform vec4 uJar;      // foot x, foot y (gl px), R px, angle
+uniform float uTime, uDay, uStorm, uCover, uTowerH, uBase, uAnvil, uSheet;
+uniform float uRain, uSnow, uMist, uFrost, uFlash, uBoltX, uBoltSeed, uRainbow;
+uniform float uSlosh, uWave, uLean, uWarp, uWind, uIce, uSnowCover, uLift, uWater;
+uniform vec2 uCloudOff;
+uniform sampler2D uDrops, uFog;
+uniform vec3 uHand;
+
+float hash(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p,p+45.32); return fract(p.x*p.y); }
+float noise(vec2 p){
+  vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
+  float a=hash(i), b=hash(i+vec2(1.0,0.0)), c=hash(i+vec2(0.0,1.0)), d=hash(i+vec2(1.0,1.0));
+  return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);
+}
+float fbm3(vec2 p){ float s=0.0,a=0.5; for(int i=0;i<3;i++){ s+=a*noise(p); p=p*2.03+vec2(1.7,9.2); a*=0.5; } return s/0.875; }
+float fbm4(vec2 p){ float s=0.0,a=0.5; for(int i=0;i<4;i++){ s+=a*noise(p); p=p*2.01+vec2(3.1,7.7); a*=0.5; } return s/0.9375; }
+float ss(float a, float b, float x){ float t = clamp((x-a)/(b-a),0.0,1.0); return t*t*(3.0-2.0*t); }
+float gs(float x){ return exp(-x*x); }
+float seg(vec2 p, vec2 a, vec2 b){ vec2 pa=p-a, ba=b-a; float h=clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0); return length(pa-ba*h); }
+
+// shared per-pixel sky state
+float gE, gDayL, gNight, gClear;
+vec2 gSun, gMoon;
+vec3 gTop, gHor, gSunCol;
+
+void skyState(){
+  float ang = (uDay-0.25)*6.2831853;
+  gE = sin(ang);
+  gSun = vec2(-cos(ang)*0.62, 0.74+gE*1.42);
+  gMoon = vec2(cos(ang)*0.62, 0.74-gE*1.42);
+  gDayL = ss(-0.16,0.28,gE);
+  gNight = ss(-0.02,-0.3,gE);
+  float dayK = ss(0.02,0.4,gE);
+  vec3 top = mix(mix(vec3(0.15,0.24,0.42),vec3(0.22,0.47,0.78),dayK), vec3(0.025,0.045,0.11), gNight);
+  vec3 hor = mix(mix(vec3(0.98,0.56,0.30),vec3(0.66,0.81,0.91),dayK), vec3(0.06,0.10,0.19), gNight);
+  float st = clamp(uStorm*0.9+uSheet*0.5,0.0,1.0);
+  vec3 slate = mix(vec3(0.05,0.06,0.08), vec3(0.30,0.34,0.38), gDayL);
+  gTop = mix(top, slate*0.8, st);
+  gHor = mix(hor, slate*1.15, st);
+  gSunCol = mix(vec3(1.0,0.52,0.24), vec3(1.0,0.95,0.84), ss(0.0,0.45,gE));
+  gClear = 1.0-st;
+}
+
+float hillH(float x){
+  float hx=(x+0.5)/0.38;
+  return 0.06+0.86*exp(-hx*hx)+(noise(vec2(x*7.0,2.0))-0.5)*0.04;
+}
+float boltX(float y){
+  return uBoltX+(noise(vec2(y*7.0,uBoltSeed))-0.5)*0.22+(noise(vec2(y*28.0,uBoltSeed+7.0))-0.5)*0.06;
+}
+float waterL(float x){
+  float wa=(0.005+uWave*0.035)*(1.0-uIce*0.9);
+  return uWater+uSlosh*x+sin(x*11.0-uTime*1.7)*wa+sin(x*23.0+uTime*2.9)*wa*0.5+uWave*0.05*sin(x*1.5708)*sin(uTime*5.2);
+}
+
+float cloudField(vec2 P){
+  vec2 q = vec2(P.x*1.1+uCloudOff.x+uLean*(P.y-1.3), P.y+uCloudOff.y);
+  vec2 w = vec2(noise(q*2.2+vec2(0.0,uTime*0.11)), noise(q*2.2+vec2(4.0,-uTime*0.09)))-0.5;
+  q += w*(0.22+uWarp*0.55);
+  float towers = max(0.0, fbm3(vec2(q.x*1.5, 3.7)) - (1.0-uCover)) / max(uCover,0.08);
+  float top = uBase+0.07+towers*uTowerH;
+  float det = fbm4(q*vec2(4.2,5.0)+vec2(uTime*0.05,-uTime*(0.06+uStorm*0.12)));
+  float d = (top-P.y)*3.2+(det-0.5)*1.3;
+  d = min(d, (P.y-uBase)*10.0+(det-0.5)*0.9);
+  float anv = uAnvil*ss(2.12,2.42,P.y)*ss(2.68,2.5,P.y);
+  d = max(d, anv*(1.6+det*1.2)-0.75);
+  float sh = uSheet*(1.0-abs(P.y-(uBase+0.28))*3.2)+(det-0.5)*0.9-0.25;
+  return max(d, sh);
+}
+
+vec3 scene(vec2 P, float aa){
+  float h01 = clamp((P.y-0.72)/1.9,0.0,1.0);
+  vec3 col = mix(gHor, gTop, pow(h01,0.65));
+  float ds = length(P-gSun), dm = length(P-gMoon);
+  float sunUp = ss(-0.12,0.06,gE);
+  col += gSunCol*(exp(-ds*3.2)*0.32+exp(-ds*13.0)*0.45)*sunUp*gClear;
+  // stars
+  vec2 sg = P*26.0; vec2 si = floor(sg); float sh = hash(si);
+  float star = step(0.972,sh)*ss(0.09,0.0,length(fract(sg)-0.5-(hash(si+3.1)-0.5)*0.6))*(0.55+0.45*sin(uTime*2.3+sh*40.0));
+  col += vec3(0.9,0.93,1.0)*star*gNight*gClear;
+  // sun and moon discs
+  col = mix(col, gSunCol*1.3+0.12, ss(0.1+aa,0.1-aa,ds)*sunUp*mix(0.35,1.0,gClear));
+  float ml = (0.82+0.18*noise(P*34.0))*mix(0.35,1.0,ss(0.055,0.075,length(P-gMoon-vec2(0.032,0.012))));
+  col += vec3(0.7,0.76,0.86)*exp(-dm*9.0)*0.18*gNight*gClear;
+  col = mix(col, vec3(0.88,0.89,0.84)*ml, ss(0.07+aa,0.07-aa,dm)*(1.0-gDayL*0.6)*mix(0.3,1.0,gClear));
+  // rainbow, opposite the sun
+  if (uRainbow>0.01){
+    float t = (length(P-vec2(-gSun.x*0.5,0.42))-1.02)/0.085;
+    if (abs(t)<1.0){
+      float hu = (0.5-t*0.5)*0.78;
+      vec3 rb = clamp(abs(mod(hu*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
+      col += rb*(1.0-t*t)*uRainbow*0.4*gDayL;
+    }
+  }
+  // clouds
+  if (P.y > uBase-0.45){
+    float d = cloudField(P);
+    if (d > -0.35){
+      vec2 lp = gDayL>0.2 ? gSun : gMoon;
+      vec2 tl = normalize(lp-P+vec2(0.0001));
+      float d2 = cloudField(P+tl*0.08);
+      float a = ss(0.0,0.32,d);
+      float lit = clamp(0.58+(d-d2)*2.0,0.0,1.0);
+      float vert = ss(uBase-0.05,uBase+0.55+uTowerH*0.6,P.y);
+      lit *= 0.5+0.5*vert;
+      vec3 cl = mix(vec3(1.0,0.74,0.55), vec3(1.0), ss(0.0,0.45,gE))*mix(0.16,1.0,gDayL);
+      cl = mix(cl, vec3(0.30,0.34,0.44), gNight*0.6);
+      vec3 cs = mix(gHor*0.7, vec3(0.32,0.36,0.42), 0.5)*mix(0.22,1.0,gDayL);
+      cs = mix(cs, vec3(0.12,0.14,0.17)*mix(0.35,1.0,gDayL), uStorm);
+      cl *= mix(1.0,0.62,uStorm*(1.0-vert*0.6));
+      vec3 cc = mix(cs, cl, lit);
+      cc += gSunCol*(1.0-ss(0.0,0.22,d))*exp(-ds*3.0)*0.55*gDayL*sunUp;
+      cc += vec3(0.75,0.80,1.0)*uFlash*(0.5+1.1*exp(-abs(P.x-uBoltX)*2.5))*(1.1-lit*0.4);
+      col = mix(col, cc, a);
+    }
+  }
+  // precipitation curtains under the base
+  float under = ss(uBase+0.1,uBase-0.5,P.y);
+  col = mix(col, gHor*0.55+vec3(0.04), clamp(uRain+uSnow*0.6,0.0,1.0)*0.3*under*(0.5+fbm3(vec2(P.x*3.0+P.y*uWind+uCloudOff.x,0.5))));
+  // far headland
+  float fh = 0.72+0.15*gs((P.x-0.52)/0.27)+(noise(vec2(P.x*9.0,5.0))-0.5)*0.025;
+  vec3 fhc = mix(gHor, vec3(0.22,0.30,0.34), 0.5)*mix(0.3,0.95,gDayL);
+  fhc = mix(fhc, vec3(0.82,0.86,0.9)*mix(0.3,0.9,gDayL), uSnowCover*0.8);
+  col = mix(col, fhc, ss(fh+aa,fh-aa,P.y));
+  // sea
+  float wl = waterL(P.x);
+  if (P.y < wl+aa*2.0){
+    float depth = wl-P.y;
+    vec3 refl = mix(gHor, gTop, 0.3)*0.92;
+    vec3 deep = vec3(0.05,0.22,0.26)*mix(0.25,1.0,gDayL)*mix(1.0,0.6,uStorm);
+    vec3 wc = mix(refl, deep, ss(0.0,0.42,depth));
+    float g = exp(-abs(P.x-gSun.x)*(7.0+depth*24.0))*ss(0.32,0.0,depth)*sunUp*gClear;
+    float sp = ss(0.62,1.0,noise(vec2(P.x*60.0,P.y*170.0)+vec2(uTime*2.6,0.0)));
+    wc += gSunCol*g*(0.2+sp*1.3);
+    float gm = exp(-abs(P.x-gMoon.x)*10.0)*ss(0.25,0.0,depth)*gNight*gClear;
+    wc += vec3(0.7,0.75,0.85)*gm*sp*0.6;
+    wc += gHor*0.25*ss(0.012,0.0,depth);
+    wc = mix(wc, vec3(0.8,0.87,0.92)*mix(0.3,1.0,gDayL), uIce*ss(0.09,0.0,depth)*0.9);
+    wc = mix(wc, vec3(0.55,0.47,0.33)*mix(0.18,0.7,gDayL), ss(0.26,0.14,P.y)*0.75);
+    wc += vec3(0.6,0.7,0.9)*uFlash*0.25;
+    col = mix(col, wc, ss(wl+aa,wl-aa,P.y));
+  }
+  // the hill
+  float hh = hillH(P.x);
+  if (P.y < hh+aa*2.0){
+    float sl = (hillH(P.x+0.01)-hillH(P.x-0.01))/0.02;
+    vec2 nrm = normalize(vec2(-sl,1.0));
+    vec2 lp = gDayL>0.2 ? gSun : gMoon;
+    float lam = clamp(dot(nrm, normalize(lp-P)),0.0,1.0);
+    vec3 gr = mix(vec3(0.17,0.32,0.15), vec3(0.40,0.53,0.22), noise(P*vec2(9.0,13.0))*0.7+noise(P*vec2(40.0,22.0))*0.3);
+    gr = mix(gr, vec3(0.5,0.44,0.3), ss(0.2,0.08,P.y)*0.6);
+    gr *= (0.4+0.6*lam)*mix(0.12,1.0,gDayL)*(1.0-uStorm*0.3);
+    gr += gSunCol*ss(0.03,0.0,hh-P.y)*0.12*gDayL*gClear;
+    float sline = hh-0.03-uSnowCover*0.4+(noise(P*22.0)-0.5)*0.06;
+    gr = mix(gr, vec3(0.86,0.9,0.95)*mix(0.22,1.0,gDayL)*(0.7+0.3*lam), uSnowCover*ss(sline-0.01,sline+0.01,P.y));
+    gr += vec3(0.6,0.7,0.9)*uFlash*0.3;
+    col = mix(col, gr, ss(hh+aa,hh-aa,P.y));
+  }
+  // a lone tree on the slope
+  float tx = -0.36, ty = hillH(tx);
+  float sway = (uWind*0.25+uWarp*0.04*sin(uTime*7.0))*(P.y-ty);
+  float trunk = step(abs(P.x-tx-sway*0.5),0.008)*step(ty-0.03,P.y)*step(P.y,ty+0.075);
+  vec2 cp = P-vec2(tx+sway,ty+0.105);
+  float crown = ss(0.058+aa,0.058-aa,length(cp*vec2(1.0,1.15))+(noise(cp*60.0)-0.5)*0.02);
+  vec3 tc = mix(vec3(0.07,0.16,0.08), vec3(0.2,0.33,0.13), ss(-0.05,0.05,cp.x*-sign(gSun.x)+cp.y))*mix(0.12,1.0,gDayL);
+  tc = mix(tc, vec3(0.8,0.85,0.9)*mix(0.22,1.0,gDayL), uSnowCover*ss(-0.01,0.03,cp.y)*0.8);
+  col = mix(col, vec3(0.12,0.09,0.06)*mix(0.2,1.0,gDayL), trunk);
+  col = mix(col, tc, crown);
+  // lightning bolt
+  if (uFlash > 0.02){
+    float yT = uBase+0.04, yB = max(waterL(uBoltX), hillH(uBoltX))-0.01;
+    if (P.y < yT && P.y > yB){
+      float dd = abs(P.x-boltX(P.y));
+      float by = mix(yT,yB,0.38);
+      if (P.y < by && P.y > by-0.32){
+        float bs = hash(vec2(uBoltSeed,1.0)) > 0.5 ? 1.0 : -1.0;
+        float bx2 = boltX(by)+(by-P.y)*0.55*bs+(noise(vec2(P.y*30.0,uBoltSeed+3.0))-0.5)*0.05;
+        dd = min(dd, abs(P.x-bx2)*1.6);
+      }
+      col += vec3(0.85,0.9,1.0)*(ss(0.009,0.0,dd)*2.2+exp(-dd*38.0)*0.55)*uFlash;
+    }
+  }
+  // rain
+  if (uRain > 0.01){
+    vec2 q = P; q.x += (q.y-1.0)*uWind;
+    float r = 0.0;
+    for (int i=0;i<3;i++){
+      float fi = float(i);
+      vec2 g = vec2(q.x*(26.0+fi*15.0), q.y*(7.0+fi*2.0)+uTime*(15.0+fi*4.0));
+      vec2 id = floor(g); vec2 f = fract(g);
+      float h = hash(id+fi*17.3);
+      float on = step(1.0-uRain*0.8, h);
+      float xo = 0.5+(hash(id+3.7)-0.5)*0.7;
+      float s = ss(0.1,0.0,abs(f.x-xo))*ss(0.0,0.55,f.y)*ss(1.0,0.82,f.y);
+      r += on*s*(0.6-fi*0.14);
+    }
+    float below = ss(uBase+0.2,uBase-0.05,P.y)*step(waterL(P.x)-0.005,P.y);
+    vec3 rc = mix(gHor,vec3(0.85,0.9,0.95),0.5)*mix(0.35,1.0,gDayL)+uFlash*0.4;
+    col = mix(col, rc, clamp(r,0.0,1.0)*below*0.5);
+  }
+  // snow
+  if (uSnow > 0.01){
+    float s = 0.0;
+    for (int i=0;i<2;i++){
+      float fi = float(i);
+      float sc = 15.0+fi*9.0;
+      vec2 g = vec2(P.x*sc+sin(P.y*3.0+uTime*0.9+fi*2.0)*0.7-uWind*P.y*sc*0.4, P.y*sc+uTime*(1.4+fi*0.6));
+      vec2 id = floor(g); vec2 f = fract(g);
+      float h = hash(id+fi*9.1);
+      float on = step(1.0-uSnow*0.7, h);
+      float dd = length(f-vec2(0.5+(hash(id+1.3)-0.5)*0.6,0.5));
+      s += on*ss(0.2-fi*0.04,0.06,dd);
+    }
+    col = mix(col, vec3(0.93,0.95,0.98)*mix(0.3,1.0,gDayL), clamp(s,0.0,1.0)*0.9);
+  }
+  // mist and stratus low over the water
+  if (uMist > 0.01){
+    float m = uMist*ss(1.55,0.72,P.y)*(0.55+0.45*fbm3(vec2(P.x*2.2+uTime*0.06+uCloudOff.x, P.y*4.0)));
+    col = mix(col, mix(gHor,vec3(0.86,0.88,0.88),0.55)*mix(0.25,1.0,gDayL), clamp(m,0.0,1.0)*0.85);
+  }
+  return col;
+}
+
+float halfW(float y){
+  float w = mix(1.0,0.8,ss(2.16,2.56,y));
+  float rb = 0.15;
+  if (y < rb) w = 1.0-rb+sqrt(max(0.0,rb*rb-(rb-y)*(rb-y)));
+  return w;
+}
+
+vec3 room(vec3 bg, vec2 p, vec3 glow, float R, vec2 jc){
+  float dist = length(p-jc)/R;
+  bg += glow*exp(-dist*0.55)*0.2;
+  // shadow and caustic on the table
+  vec2 f = uJar.xy;
+  if (p.y < f.y+R*0.3){
+    float lift = clamp(uLift,0.0,1.0);
+    float e1 = length((p-vec2(f.x+R*0.95,f.y-R*0.05))/vec2(1.7*R,0.19*R));
+    float e2 = length((p-f)/vec2(1.06*R,0.075*R));
+    float sh = ss(1.0,0.0,e1)*0.42+ss(1.0,0.35,e2)*0.55*(1.0-lift);
+    bg *= 1.0-clamp(sh*(1.0-lift*0.6),0.0,0.78);
+    float e3 = length((p-vec2(f.x+R*0.85,f.y-R*0.06))/vec2(0.42*R,0.06*R));
+    bg += gSunCol*ss(1.0,0.0,e3)*0.35*gDayL*gClear*ss(-0.05,0.15,gE)*(1.0-lift);
+  }
+  bg += vec3(0.78,0.85,1.0)*uFlash*(0.07+0.85*exp(-dist*0.42));
+  return bg;
+}
+
+void main(){
+  vec2 p = gl_FragCoord.xy;
+  vec2 uv = p/uRes;
+  float R = uJar.z, a = uJar.w;
+  float ca = cos(a), sa = sin(a);
+  vec2 d = p-uJar.xy;
+  vec2 L = vec2(ca*d.x+sa*d.y, -sa*d.x+ca*d.y)/R;
+  float aa = 1.2/R;
+  skyState();
+  vec3 glow = mix(gHor,gTop,0.4)*(0.25+0.75*gDayL)*(1.0-uStorm*0.5)+gSunCol*gDayL*gClear*0.25;
+  vec2 jc = uJar.xy+vec2(-sa,ca)*R*1.4;
+  vec3 col = room(texture2D(uBg,uv).rgb, p, glow, R, jc);
+  float x = L.x, y = L.y;
+  if (y > -0.2 && y < 3.1 && abs(x) < 1.15){
+    float w = halfW(y);
+    float body = ss(w+aa,w-aa,abs(x))*ss(-aa,aa,y)*ss(2.705+aa,2.705-aa,y);
+    if (body > 0.0){
+      float xn = clamp(x/w,-1.0,1.0);
+      vec3 bgR = texture2D(uBg,(p+vec2(-xn*0.4*R, 0.04*R))/uRes).rgb;
+      vec3 glass = bgR*vec3(0.8,0.92,0.88)+glow*0.05;
+      vec3 jcol = glass;
+      float wi = w-0.05;
+      float inner = ss(wi+aa,wi-aa,abs(x))*ss(0.13,0.13+aa*2.0,y)*ss(2.67,2.67-aa*2.0,y);
+      if (inner > 0.0){
+        float xi = clamp(x/wi,-1.0,1.0);
+        vec2 duv = vec2(x*0.5+0.5, y/2.75);
+        vec4 dr = texture2D(uDrops, duv);
+        float dm = ss(0.05,0.22,dr.b);
+        vec2 dn = (dr.rg-0.5)*2.0; dn.y = -dn.y;
+        vec2 P = vec2(xi*(0.86+0.14*xi*xi), y) - dn*0.1*dm;
+        vec3 sc = scene(P, aa*1.3);
+        sc = mix(sc, glass, ss(0.78,1.0,abs(xi))*0.4);
+        // water beads on the inside of the glass
+        sc *= 1.0-dm*dot(dn,dn)*0.4;
+        vec3 n3 = normalize(vec3(dn, 0.5+dr.b));
+        sc += pow(max(dot(n3, normalize(vec3(-0.55,0.45,0.7))),0.0),22.0)*dm*0.8;
+        sc += pow(max(dot(n3, normalize(vec3(0.5,-0.6,0.6))),0.0),8.0)*dm*0.08;
+        // dew fog, cleared where drops have run
+        float fg = ss(0.05,0.9,texture2D(uFog, duv).r)*(1.0-dm);
+        vec3 fogc = mix(gHor, vec3(0.8,0.83,0.84), 0.6)*mix(0.3,0.95,gDayL)+glow*0.12+vec3(0.6,0.7,0.9)*uFlash*0.4;
+        sc = mix(sc, fogc, fg*0.8);
+        jcol = mix(glass, sc*vec3(0.96,1.0,0.985), inner);
+      }
+      // hoar frost creeping in from the edges
+      if (uFrost > 0.01){
+        float ed = min(1.0-abs(xn), min(y*0.8, (2.7-y)*1.2));
+        vec2 fq = vec2(x,y)*8.0; float fp = 0.0, fa = 0.5;
+        for (int i=0;i<4;i++){ fp += fa*(1.0-abs(noise(fq)*2.0-1.0)); fq = fq*2.13+vec2(1.3,0.7); fa *= 0.5; }
+        fp /= 0.9375;
+        float F = uFrost*0.85;
+        float grow = 1.0-ss(F-0.2, F, ed+(1.0-fp)*0.28);
+        float fr = grow*(0.35+0.65*fp*fp)*clamp(uFrost*2.5,0.0,1.0);
+        fr *= 1.0-uHand.z*gs(length(vec2(x,y)-uHand.xy)/0.42);
+        vec3 fc = vec3(0.84,0.9,0.96)*mix(0.3,1.0,gDayL)+glow*0.2+vec3(0.7,0.8,1.0)*uFlash*0.5;
+        jcol = mix(jcol, fc, fr*0.88);
+        jcol += step(0.988,hash(floor(vec2(x,y)*95.0)))*fr*0.35*(0.5+0.5*sin(uTime*3.0+x*40.0));
+      }
+      // the warmth of a hand
+      jcol += vec3(1.0,0.62,0.36)*uHand.z*gs(length(vec2(x,y)-uHand.xy)/0.32)*0.07;
+      float rim = ss(0.85,1.0,abs(xn));
+      jcol = mix(jcol, jcol*vec3(0.55,0.72,0.68), rim*0.6);
+      float vm = ss(0.25,0.6,y)*ss(2.3,1.95,y);
+      float mull = 1.0-0.8*ss(0.028,0.0,abs(y-1.42));
+      jcol += vec3(0.94,0.97,1.0)*gs((xn+0.62)/0.055)*vm*mull*0.5;
+      jcol += vec3(0.94,0.97,1.0)*gs((xn+0.5)/0.018)*vm*0.18;
+      jcol += vec3(1.0)*gs((xn-0.8)/0.022)*vm*0.2;
+      jcol += vec3(1.0)*ss(0.975,0.995,abs(xn))*0.14;
+      jcol += gs((y-2.36-xn*0.1)/0.035)*gs((xn+0.45)/0.2)*0.22;
+      float base = ss(0.16,0.12,y);
+      jcol = mix(jcol, glass*vec3(0.85,1.05,0.98)*1.1, base*0.65);
+      jcol += gs((y-0.125)/0.012)*0.22*(1.0-abs(xn));
+      jcol += gs((y-0.03-0.03*(1.0-xn*xn))/0.01)*0.18*(1.0-abs(xn)*0.7);
+      float ry = 2.64+0.04*sqrt(max(0.0,1.0-xn*xn));
+      jcol += ss(0.012,0.0,abs(y-ry))*0.14*step(abs(x),0.79);
+      col = mix(col, jcol, body);
+    }
+    // rubber seal with its pull tab
+    float seal = ss(0.845+aa,0.845-aa,abs(x))*ss(2.695-aa,2.695+aa,y)*ss(2.755+aa,2.755-aa,y);
+    seal = max(seal, ss(0.84,0.84+aa,x)*ss(0.99+aa,0.99-aa,x)*ss(2.7-aa,2.7+aa,y)*ss(2.738+aa,2.738-aa,y));
+    if (seal > 0.0){
+      float sxn = clamp(x/0.85,-1.0,1.0);
+      vec3 sc = vec3(0.83,0.39,0.16)*(0.42+0.5*(1.0-sxn*sxn)+0.25*ss(-0.6,0.0,-sxn));
+      sc += ss(2.738,2.752,y)*0.12;
+      sc += vec3(0.75,0.85,1.0)*uFlash*0.5+glow*0.1;
+      col = mix(col, sc, seal);
+    }
+    // glass lid
+    float lw = 0.86, lx = x/lw;
+    float lt = 2.83+0.075*sqrt(max(0.0,1.0-lx*lx));
+    float lid = ss(lw+aa,lw-aa,abs(x))*ss(2.755-aa,2.755+aa,y)*ss(lt+aa,lt-aa,y);
+    if (lid > 0.0){
+      vec3 lb = texture2D(uBg,(p+vec2(-lx*0.5*R,-0.12*R))/uRes).rgb*vec3(0.78,0.9,0.86)+glow*0.18;
+      lb += gs((y-lt+0.022)/0.012)*0.4*(1.0-abs(lx));
+      lb += gs((lx+0.55)/0.08)*0.25;
+      lb = mix(lb, lb*vec3(0.55,0.7,0.66), ss(0.8,1.0,abs(lx))*0.6);
+      lb += vec3(0.75,0.85,1.0)*uFlash*0.4;
+      col = mix(col, lb, lid);
+    }
+    // wire bail, neck wire and lever
+    float wd = seg(L,vec2(-0.86,2.64),vec2(-0.6,2.955));
+    wd = min(wd, seg(L,vec2(-0.6,2.955),vec2(0.6,2.955)));
+    wd = min(wd, seg(L,vec2(0.6,2.955),vec2(0.86,2.64)));
+    wd = min(wd, seg(L,vec2(-0.87,2.645),vec2(-0.45,2.6)));
+    wd = min(wd, seg(L,vec2(-0.45,2.6),vec2(0.45,2.6)));
+    wd = min(wd, seg(L,vec2(0.45,2.6),vec2(0.87,2.645)));
+    float wr = 0.014;
+    float lv = seg(L,vec2(0.87,2.67),vec2(0.94,2.4));
+    float lr = 0.022;
+    float wm = max(ss(wr+aa,wr-aa,wd), ss(lr+aa,lr-aa,lv));
+    if (wm > 0.0){
+      float t = wd < wr+aa ? 1.0-wd/wr : 1.0-lv/lr;
+      vec3 steel = vec3(0.58,0.6,0.62)*(0.35+0.85*t*t)+glow*0.1+vec3(0.75,0.85,1.0)*uFlash*0.5;
+      col = mix(col, steel, wm);
+    }
+  }
+  col += (hash(p+fract(uTime))-0.5)/200.0;
+  gl_FragColor = vec4(col,1.0);
+}`;
+
+function sh(type, src){
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); }
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS));
+gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+const aLoc = gl.getAttribLocation(prog, 'a');
+gl.enableVertexAttribArray(aLoc);
+gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
+const U = {};
+['uRes','uBg','uJar','uTime','uDay','uStorm','uCover','uTowerH','uBase','uAnvil','uSheet','uRain','uSnow','uMist','uFrost','uFlash','uBoltX','uBoltSeed','uRainbow','uSlosh','uWave','uLean','uWarp','uWind','uIce','uSnowCover','uLift','uWater','uCloudOff','uDrops','uFog','uHand']
+  .forEach(n => U[n] = gl.getUniformLocation(prog, n));
+
+function makeTex(unit){
+  const t = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+const bgTex = makeTex(0);
+gl.uniform1i(U.uBg, 0);
+const dropTex = makeTex(1), fogTex = makeTex(2);
+gl.uniform1i(U.uDrops, 1); gl.uniform1i(U.uFog, 2);
+const MAXTEX = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 4096;
+
+/* ---------------- the room ---------------- */
+const bgC = document.createElement('canvas');
+const bx = bgC.getContext('2d');
+let W = 0, H = 0, DPR = 1, R = 100, homeX = 0, footY = 0, tableY = 0;
+let windowOpen = false;
+
+function rnd(seed){ let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+
+function paintRoom(){
+  const c = bx, r = rnd(7);
+  c.setTransform(DPR,0,0,DPR,0,0);
+  // wall: lichen-grey plaster, lit from the window on the left
+  let g = c.createLinearGradient(0,0,W,0);
+  g.addColorStop(0,'#55615b'); g.addColorStop(0.45,'#46514c'); g.addColorStop(1,'#2c3532');
+  c.fillStyle = g; c.fillRect(0,0,W,H);
+  g = c.createLinearGradient(0,0,0,tableY);
+  g.addColorStop(0,'rgba(20,26,24,.35)'); g.addColorStop(0.6,'rgba(20,26,24,0)'); g.addColorStop(1,'rgba(20,26,24,.25)');
+  c.fillStyle = g; c.fillRect(0,0,W,tableY);
+  // window
+  const ww = Math.max(150, Math.min(W*0.36, H*0.5));
+  const wx0 = Math.max(W*0.04, homeX - R*0.9 - ww*0.8);
+  const wy0 = H*0.07, wy1 = tableY - Math.max(28, H*0.08);
+  const wh = wy1 - wy0;
+  const ft = Math.max(6, ww*0.05);
+  // soft light around the window
+  g = c.createRadialGradient(wx0+ww/2, wy0+wh*0.55, ww*0.2, wx0+ww/2, wy0+wh*0.55, ww*1.3);
+  g.addColorStop(0,'rgba(190,200,195,.16)'); g.addColorStop(1,'rgba(190,200,195,0)');
+  c.fillStyle = g; c.fillRect(0,0,W,tableY);
+  // casing
+  c.fillStyle = '#7d847d'; c.fillRect(wx0-ft*1.4, wy0-ft*1.4, ww+ft*2.8, wh+ft*2.2);
+  c.fillStyle = '#8f968e'; c.fillRect(wx0-ft*1.4, wy0-ft*1.4, ww+ft*2.8, ft*0.6);
+  // the view: overcast afternoon over slate roofs
+  g = c.createLinearGradient(0,wy0,0,wy1);
+  g.addColorStop(0,'#7f91a1'); g.addColorStop(0.55,'#b3b8b3'); g.addColorStop(1,'#c9c3b2');
+  c.fillStyle = g; c.fillRect(wx0, wy0, ww, wh);
+  c.save(); c.beginPath(); c.rect(wx0,wy0,ww,wh); c.clip();
+  // far trees
+  c.fillStyle = '#6c7973';
+  for (let i=0;i<22;i++){ const x = wx0 + r()*ww, y = wy1 - wh*(0.17+r()*0.06); c.beginPath(); c.ellipse(x, y, ww*(0.02+r()*0.03), wh*(0.025+r()*0.03), 0, 0, Math.PI*2); c.fill(); }
+  // roofline with chimneys
+  c.fillStyle = '#5a6670';
+  let x = wx0 - 10;
+  while (x < wx0 + ww){
+    const bw = ww*(0.1+r()*0.14), bh = wh*(0.07+r()*0.08), by = wy1 - bh;
+    c.beginPath(); c.moveTo(x, wy1); c.lineTo(x, by+bh*0.35); c.lineTo(x+bw*0.5, by); c.lineTo(x+bw, by+bh*0.35); c.lineTo(x+bw, wy1); c.fill();
+    if (r() > 0.4){ const cx = x + bw*(0.2+r()*0.5); c.fillRect(cx, by-bh*0.12, bw*0.07, bh*0.4); }
+    x += bw*(0.8+r()*0.3);
+  }
+  c.fillStyle = '#4c5760'; c.fillRect(wx0, wy1-wh*0.05, ww, wh*0.05);
+  // pane reflection
+  g = c.createLinearGradient(wx0, wy0, wx0+ww, wy1);
+  g.addColorStop(0,'rgba(255,255,255,.10)'); g.addColorStop(0.5,'rgba(255,255,255,0)'); g.addColorStop(1,'rgba(255,255,255,.05)');
+  c.fillStyle = g; c.fillRect(wx0,wy0,ww,wh);
+  c.restore();
+  // sashes: six over six
+  const frame = '#b3b8b0', frameS = '#959b93';
+  const mid = wy0 + wh*0.5;
+  const lowerTop = windowOpen ? wy0 + wh*0.18 : mid;
+  c.fillStyle = frame;
+  c.fillRect(wx0, wy0, ww, ft*0.8); c.fillRect(wx0, wy1-ft*0.8, ww, ft*0.8);
+  c.fillRect(wx0, wy0, ft*0.8, wh); c.fillRect(wx0+ww-ft*0.8, wy0, ft*0.8, wh);
+  const bars = (top, bottom, shade) => {
+    c.fillStyle = shade;
+    for (let i=1;i<3;i++) c.fillRect(wx0 + ww*i/3 - ft*0.22, top, ft*0.44, bottom-top);
+    c.fillRect(wx0, (top+bottom)/2 - ft*0.22, ww, ft*0.44);
+    c.fillRect(wx0, top, ww, ft*0.7); c.fillRect(wx0, bottom-ft*0.7, ww, ft*0.7);
+  };
+  bars(wy0, mid, frame);
+  if (windowOpen){
+    // lower sash raised behind the upper one; cold air at the gap
+    c.fillStyle = 'rgba(200,215,225,.08)'; c.fillRect(wx0, lowerTop, ww, mid-lowerTop);
+    bars(lowerTop, lowerTop + wh*0.5, frameS);
+    c.fillStyle = 'rgba(214,230,240,.12)'; c.fillRect(wx0+ft, lowerTop + wh*0.5, ww-ft*2, wy1-(lowerTop+wh*0.5));
+  } else {
+    bars(mid, wy1, frame);
+  }
+  c.fillStyle = frameS; c.fillRect(wx0, mid - ft*0.5, ww, ft);
+  // sill
+  c.fillStyle = '#9aa098'; c.fillRect(wx0-ft*2, wy1+ft*0.6, ww+ft*4, ft*1.2);
+  c.fillStyle = '#b8bdb4'; c.fillRect(wx0-ft*2, wy1+ft*0.6, ww+ft*4, ft*0.3);
+  c.fillStyle = 'rgba(0,0,0,.25)'; c.fillRect(wx0-ft*1.6, wy1+ft*1.8, ww+ft*3.2, ft*0.5);
+  // sheer linen curtain on the left
+  const cw = ww*0.28, cx0 = wx0 - ft*1.8;
+  g = c.createLinearGradient(cx0, 0, cx0+cw, 0);
+  for (let i=0;i<=20;i++){ const t = i/20; g.addColorStop(t, `rgba(222,224,214,${(0.07+0.11*Math.pow(Math.sin(t*Math.PI*4.5+0.6),2))*(1-t*0.55)})`); }
+  c.fillStyle = g; c.fillRect(cx0, wy0-ft*2, cw, wh+ft*5);
+  // table: oiled oak, planks running left to right
+  const fy = H*0.935;
+  g = c.createLinearGradient(0,tableY,0,fy);
+  g.addColorStop(0,'#3e2c1e'); g.addColorStop(0.35,'#5b412b'); g.addColorStop(1,'#7a5a3b');
+  c.fillStyle = g; c.fillRect(0,tableY,W,fy-tableY);
+  const planks = 4;
+  for (let i=0;i<planks;i++){
+    const t0 = i/planks, t1 = (i+1)/planks;
+    const y0 = tableY + (fy-tableY)*t0*t0*0.4 + (fy-tableY)*t0*0.6;
+    const y1 = tableY + (fy-tableY)*t1*t1*0.4 + (fy-tableY)*t1*0.6;
+    for (let k=0;k<26;k++){
+      const yy = y0 + (y1-y0)*r();
+      c.strokeStyle = r() > 0.5 ? 'rgba(30,18,10,.16)' : 'rgba(150,110,70,.10)';
+      c.lineWidth = 0.6 + r()*1.4;
+      c.beginPath();
+      const amp = (y1-y0)*0.06*r(), ph = r()*6, fr = 0.004 + r()*0.01;
+      for (let xx=0; xx<=W; xx+=12) c.lineTo(xx, yy + Math.sin(xx*fr+ph)*amp);
+      c.stroke();
+    }
+    if (i>0){ c.fillStyle = 'rgba(20,12,6,.45)'; c.fillRect(0, y0-1, W, 1.6); c.fillStyle = 'rgba(160,120,80,.12)'; c.fillRect(0, y0+0.6, W, 1); }
+  }
+  // window light pooled on the table
+  g = c.createRadialGradient(wx0+ww*0.6, tableY+(fy-tableY)*0.35, 10, wx0+ww*0.6, tableY+(fy-tableY)*0.35, ww*1.1);
+  g.addColorStop(0,'rgba(210,205,190,.16)'); g.addColorStop(1,'rgba(210,205,190,0)');
+  c.fillStyle = g; c.fillRect(0,tableY,W,fy-tableY);
+  // edge where wall meets table
+  c.fillStyle = 'rgba(10,8,6,.5)'; c.fillRect(0,tableY-2,W,3);
+  // front edge and face
+  c.fillStyle = '#8c6a48'; c.fillRect(0, fy, W, 2);
+  g = c.createLinearGradient(0,fy+2,0,H);
+  g.addColorStop(0,'#3b2a1c'); g.addColorStop(1,'#1f160f');
+  c.fillStyle = g; c.fillRect(0, fy+2, W, H-fy);
+  // plaster tooth and wood pores
+  for (let i=0;i<W*H/90;i++){
+    const xx = r()*W, yy = r()*H;
+    c.fillStyle = r()>0.5 ? 'rgba(255,255,255,.035)' : 'rgba(0,0,0,.05)';
+    c.fillRect(xx, yy, 1.2, 1.2);
+  }
+  // vignette
+  g = c.createRadialGradient(W*0.55, H*0.5, Math.min(W,H)*0.25, W*0.55, H*0.5, Math.max(W,H)*0.85);
+  g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(6,8,8,.55)');
+  c.fillStyle = g; c.fillRect(0,0,W,H);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, bgTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, bgC);
+}
+
+let resScale = 1;
+function layout(){
+  W = innerWidth; H = innerHeight;
+  DPR = Math.min(window.devicePixelRatio || 1, WALL ? 1.5 : 2) * resScale;
+  DPR = Math.min(DPR, MAXTEX / Math.max(W, H));
+  R = Math.min(H*0.6/2.98, W*0.34);
+  homeX = W/H > 1.15 ? W*0.56 : W*0.5;
+  tableY = H*0.66;
+  footY = H*0.8;
+  canvas.width = Math.round(W*DPR); canvas.height = Math.round(H*DPR);
+  bgC.width = canvas.width; bgC.height = canvas.height;
+  gl.viewport(0,0,canvas.width,canvas.height);
+  paintRoom();
+  const k = document.getElementById('jarKey');
+  k.style.left = (homeX - R*1.1) + 'px'; k.style.top = (footY - R*3.05) + 'px';
+  k.style.width = (R*2.2) + 'px'; k.style.height = (R*3.15) + 'px';
+}
+
+/* ---------------- weather and physics ---------------- */
+const S = {
+  t: 0, day: 0.31, storm: 0.08, temp: 21, ambient: 17,
+  rain: 0, snow: 0, mist: 0, dew: 0.35, frost: 0, ice: 0, snowCover: 0,
+  flash: 0, flashT: 9, boltX: 0, boltSeed: 1, nextBolt: 3,
+  rainbow: 0, rainbowT: 0, wasStormy: false,
+  cover: 0.55, towerH: 0.45, base: 1.6, anvil: 0, sheet: 0,
+  slosh: 0, sloshV: 0, wave: 0, cloudOff: [0, 0], cloudV: 0, lean: 0, warp: 0, wind: 0,
+};
+const J = { x: 0, vx: 0, ax: 0, ang: 0, va: 0, lift: 0 };
+const ptr = { lastMoveT: 0, ax: 0, ay: 0, downT: 0, down: false, id: -1, grabDX: 0, x: 0, y: 0, lastX: 0, lastT: 0, vx: 0, lastSign: 0, peak: 0, moved: 0, stillT: 0, holding: false };
+let lastInteract = -1e9;
+
+const smooth = (a, b, t) => { t = Math.min(1, Math.max(0, (t - a) / (b - a))); return t*t*(3-2*t); };
+const approach = (v, target, rate, dt) => v + (target - v) * (1 - Math.exp(-rate * dt));
+
+function toLocal(cx, cy){
+  const fx = homeX + J.x, fy = footY - J.lift*R;
+  const dx = cx - fx, dy = fy - cy;
+  const c = Math.cos(J.ang), s = Math.sin(J.ang);
+  return [(c*dx + s*dy)/R, (-s*dx + c*dy)/R];
+}
+function onJar(cx, cy){ const [lx, ly] = toLocal(cx, cy); return Math.abs(lx) < 1.08 && ly > -0.1 && ly < 3.02; }
+
+function addStorm(v){ S.storm = Math.min(1, S.storm + v); }
+
+function update(dt){
+  S.t += dt;
+  const DAY = 120;
+  S.day = (S.day + dt/DAY) % 1;
+  const k = (R || 100);
+  // jar body
+  const maxX = Math.min(W*0.3, R*1.7);
+  let tx = 0;
+  if (ptr.down) tx = Math.max(-maxX, Math.min(maxX, ptr.x - ptr.grabDX - homeX));
+  else if (AP.mode === 'shake') tx = AP.x;
+  const stiff = ptr.down ? 900 : AP.mode === 'shake' ? 320 : 60;
+  const ks = stiff, cs = ptr.down || AP.mode === 'shake' ? 2*Math.sqrt(stiff) : 2*Math.sqrt(60)*0.55;
+  const prevVx = J.vx;
+  J.vx += (ks*(tx - J.x) - cs*J.vx) * dt;
+  J.x += J.vx * dt;
+  const vxR = J.vx / k;
+  const axR = (J.vx - prevVx) / dt / k;
+  J.ax = approach(J.ax, axR, 30, dt);
+  let angT = Math.max(-0.38, Math.min(0.38, vxR*0.045 - (ptr.down ? (J.x/k)*0.18 : 0)));
+  J.va += (140*(angT - J.ang) - 7*J.va) * dt;
+  J.ang += J.va * dt;
+  J.lift = approach(J.lift, ptr.down ? Math.min(0.14, Math.abs(vxR)*0.02) : 0, 8, dt);
+  // slosh: the sea stays level with the world, then overshoots
+  const sloshEq = -Math.tan(J.ang);
+  S.sloshV += (-38*(S.slosh - sloshEq) - 2.2*S.sloshV - J.ax*0.045) * dt;
+  S.slosh = Math.max(-0.55, Math.min(0.55, S.slosh + S.sloshV*dt));
+  S.wave = approach(S.wave, 0, 0.6, dt) + Math.min(0.08, Math.abs(J.ax)*0.0006) * (reduced ? 0.4 : 1);
+  S.wave = Math.min(1, S.wave);
+  S.cloudV += (-J.ax*0.012 - S.cloudV*0.7) * dt;
+  S.cloudV = Math.max(-3, Math.min(3, S.cloudV));
+  const drift = 0.02 + S.storm*0.05;
+  S.cloudOff[0] += (S.cloudV + drift) * dt;
+  S.cloudOff[1] = Math.sin(S.t*0.05)*0.05;
+  S.lean = approach(S.lean, Math.max(-0.6, Math.min(0.6, -vxR*0.06 + J.ang*0.8)), 3, dt);
+  S.warp = approach(S.warp, Math.min(1.5, Math.abs(S.cloudV)*1.5 + S.storm*0.4), 2, dt);
+  S.wind = approach(S.wind, Math.max(-0.7, Math.min(0.7, S.cloudV*0.5 + drift*3 + J.ang*0.6)), 2, dt);
+
+  // shaking during a drag
+  if (ptr.down){
+    const sign = Math.sign(ptr.vx);
+    if (Math.abs(ptr.vx) > 2.6 && sign !== 0){
+      if (ptr.lastSign && sign !== ptr.lastSign && ptr.peak > 3){ addStorm(0.055 * Math.min(1.7, ptr.peak/6)); ptr.reversals = (ptr.reversals||0) + 1; onShakeKnock(ptr.peak); }
+      if (sign !== ptr.lastSign) ptr.peak = 0;
+      ptr.lastSign = sign;
+    }
+    ptr.peak = Math.max(ptr.peak, Math.abs(ptr.vx));
+    addStorm(Math.min(0.02, Math.abs(J.ax)*0.00004) * dt * 10);
+  }
+  // storm life cycle
+  const decay = S.storm > 0.5 ? 0.010 : 0.016;
+  S.storm = Math.max(0, S.storm - decay*dt*(ptr.down ? 0.3 : 1));
+  S.storm = Math.max(S.storm, autoStorm());
+
+  // temperature: a hand warms it, the open window chills it
+  const nowMs = performance.now();
+  const holding = (ptr.down && nowMs - ptr.lastMoveT > 350) || keyWarm || autoWarm();
+  if (holding){ const hl = ptr.down ? toLocal(ptr.x, ptr.y) : [0.0, 1.3]; hand.x = hl[0]; hand.y = hl[1]; }
+  hand.a = approach(hand.a, holding ? 1 : 0, holding ? 1.5 : 0.6, dt);
+  S.temp = approach(S.temp, holding ? 34 : S.ambient, holding ? 0.16 : (S.ambient < 5 ? 0.07 : 0.045), dt);
+  const dewT = Math.min(1, smooth(19, 27, S.temp) + (S.rain > 0.3 && S.temp > 3 ? 0.22 : 0));
+  S.dew = approach(S.dew, dewT, dewT > S.dew ? 0.6 : 0.1, dt);
+  S.mist = approach(S.mist, smooth(22, 31, S.temp)*0.85 + S.rain*0.12*smooth(3, 8, S.temp), 0.4, dt);
+  const frT = smooth(1.5, -6, S.temp);
+  S.frost = approach(S.frost, frT, frT > S.frost ? 0.12 : (holding ? 0.3 : 0.06), dt);
+  S.ice = approach(S.ice, smooth(-1, -7, S.temp), 0.1, dt);
+  if (S.snow > 0.12 && S.temp < 1) S.snowCover = Math.min(1, S.snowCover + dt*0.035*S.snow);
+  if (S.temp > 3) S.snowCover = Math.max(0, S.snowCover - dt*0.02*(S.temp - 2)/6);
+  const cold = smooth(2, -3, S.temp);
+  const precip = smooth(0.33, 0.62, S.storm);
+  const snowFrac = smooth(2, -1, S.temp);
+  S.rain = approach(S.rain, precip*(1-snowFrac), 1.2, dt);
+  S.snow = approach(S.snow, Math.max(precip, cold*0.35)*snowFrac, 1.2, dt);
+  S.cover = approach(S.cover, 0.52 + 0.48*smooth(0.04, 0.55, S.storm) + 0.1*Math.sin(S.day*Math.PI*2 - 1.2), 1.5, dt);
+  S.towerH = approach(S.towerH, 0.42 + 1.1*smooth(0.08, 0.85, S.storm) - cold*0.15, 1.2, dt);
+  S.base = approach(S.base, 1.6 - 0.4*S.storm - cold*0.25, 1.2, dt);
+  S.anvil = approach(S.anvil, smooth(0.68, 0.98, S.storm), 1.0, dt);
+  S.sheet = approach(S.sheet, cold*0.85, 0.5, dt);
+
+  // lightning
+  S.flashT += dt;
+  if (S.storm > 0.66 && !reduced){
+    S.nextBolt -= dt * (0.4 + S.storm);
+    if (S.nextBolt <= 0){
+      S.nextBolt = 1.2 + Math.random()*4.5;
+      S.flashT = 0; S.boltX = (Math.random()*1.3 - 0.65); S.boltSeed = Math.random()*100;
+      onThunder(S.storm);
+    }
+  }
+  const ft = S.flashT;
+  S.flash = reduced ? 0 : Math.min(1.2, Math.exp(-ft*10) + (ft > 0.11 ? 0.75*Math.exp(-(ft-0.11)*12) : 0) + (ft > 0.3 ? 0.4*Math.exp(-(ft-0.3)*9) : 0));
+
+  // rainbow after the rain, when the sun comes back
+  const sunE = Math.sin((S.day - 0.25)*Math.PI*2);
+  if (S.storm > 0.5) S.wasStormy = true;
+  if (S.wasStormy && S.storm < 0.28 && sunE > 0.05 && S.temp > 2){ S.wasStormy = false; S.rainbowT = 26; }
+  S.rainbowT = Math.max(0, S.rainbowT - dt);
+  S.rainbow = approach(S.rainbow, S.rainbowT > 0 && sunE > 0 ? Math.min(1, S.rainbowT/6) : 0, 0.8, dt);
+}
+
+/* ---------------- labels ---------------- */
+const BEAUFORT = ['calm','light air','light breeze','gentle breeze','moderate breeze','fresh breeze','strong breeze','near gale','gale','strong gale','storm'];
+const elState = document.getElementById('state'), elWind = document.getElementById('wind'), elTemp = document.getElementById('temp');
+let shownState = '', pendingState = '', pendingSince = 0;
+function describe(){
+  const sunE = Math.sin((S.day - 0.25)*Math.PI*2);
+  if (S.flashT < 3 && S.storm > 0.66) return S.anvil > 0.5 ? 'Thunderstorm, anvil flattening under the lid' : 'Cumulonimbus, lightning';
+  if (S.storm > 0.72) return S.snow > 0.3 ? 'Snow squall' : 'Cumulonimbus building';
+  if (S.storm > 0.45) return S.snow > 0.3 ? 'Snow showers from cumulus congestus' : 'Heavy showers from cumulus congestus';
+  if (S.storm > 0.22) return 'Cumulus congestus building';
+  if (S.rainbow > 0.3) return 'Rainbow as the sun comes back';
+  if (S.frost > 0.4) return S.snow > 0.15 ? 'Nimbostratus, light snow' : 'Frost on the glass';
+  if (S.mist > 0.35) return 'Stratus and mist over the water';
+  if (S.dew > 0.4) return 'Dew on the glass';
+  if (sunE < -0.25) return S.cover > 0.6 ? 'Cloudy night' : 'Clear night';
+  if (sunE < 0.12) return Math.cos((S.day - 0.25)*Math.PI*2) > 0 ? 'Sunset glow on the cumulus' : 'Dawn over the sea';
+  return S.cover > 0.62 ? 'Stratocumulus' : 'Fair-weather cumulus';
+}
+function beaufort(){ return Math.max(0, Math.min(10, Math.round(1 + S.storm*8.5 + Math.abs(S.cloudV)*2.5 + S.wave*2))); }
+function updateLabels(now){
+  const st = describe();
+  if (st !== pendingState){ pendingState = st; pendingSince = now; }
+  if (pendingState !== shownState && now - pendingSince > 900){ shownState = pendingState; elState.textContent = shownState; }
+  const b = beaufort();
+  const wt = `Force ${b}, ${BEAUFORT[b]}`;
+  if (elWind.textContent !== wt) elWind.textContent = wt;
+  const tt = `${Math.round(S.temp)} °C inside the jar`;
+  if (elTemp.textContent !== tt) elTemp.textContent = tt;
+}
+
+/* ---------------- sound (v2) ---------------- */
+const A = { ctx: null, on: false, lastTink: 0 };
+function audioStart(){
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return false;
+  if (A.ctx){ if (A.ctx.state !== 'running') A.ctx.resume(); return true; }
+  const ctx = A.ctx = new AC();
+  const master = A.master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
+  const muffle = A.muffle = ctx.createBiquadFilter(); muffle.type = 'lowpass'; muffle.frequency.value = 1500; muffle.Q.value = 0.4; muffle.connect(master);
+  const sr = ctx.sampleRate;
+  const white = A.white = ctx.createBuffer(1, sr*2, sr), wd = white.getChannelData(0);
+  for (let i=0;i<wd.length;i++) wd[i] = Math.random()*2 - 1;
+  const brown = A.brown = ctx.createBuffer(1, sr*4, sr), bd = brown.getChannelData(0);
+  let l = 0; for (let i=0;i<bd.length;i++){ l = (l + 0.02*(Math.random()*2 - 1))/1.02; bd[i] = l*3.5; }
+  const loop = (buf, type, f, q, dest) => {
+    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+    const bq = ctx.createBiquadFilter(); bq.type = type; bq.frequency.value = f; bq.Q.value = q;
+    const g = ctx.createGain(); g.gain.value = 0;
+    src.connect(bq); bq.connect(g); g.connect(dest); src.start(); return g;
+  };
+  A.rainG = loop(white, 'bandpass', 1500, 0.45, muffle);
+  A.windG = loop(brown, 'lowpass', 380, 0.7, muffle);
+  A.roomG = loop(brown, 'lowpass', 90, 0.5, master);
+  return true;
+}
+function setSound(on){
+  if (on && !audioStart()) return false;
+  A.on = on;
+  if (A.ctx) A.master.gain.setTargetAtTime(on ? 0.9 : 0, A.ctx.currentTime, 0.25);
+  return true;
+}
+function soundUpdate(dt){
+  if (!A.ctx || !A.on) return;
+  const t = A.ctx.currentTime;
+  A.rainG.gain.setTargetAtTime(S.rain*0.34, t, 0.3);
+  A.windG.gain.setTargetAtTime(Math.min(0.5, S.storm*0.32 + Math.abs(S.cloudV)*0.12 + S.wave*0.12), t, 0.4);
+  A.roomG.gain.setTargetAtTime(0.05, t, 1);
+  if (Math.random() < S.rain*dt*26) drip(0.5 + Math.random()*0.5);
+}
+function drip(v){
+  const ctx = A.ctx, t = ctx.currentTime + Math.random()*0.02, f = 1300 + Math.random()*2000;
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f*0.55, t + 0.05);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.03*v, t + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+  o.connect(g); g.connect(A.muffle); o.start(t); o.stop(t + 0.08);
+}
+function tink(v){
+  if (!A.ctx || !A.on) return;
+  const now = performance.now(); if (now - A.lastTink < 110) return; A.lastTink = now;
+  const ctx = A.ctx, t = ctx.currentTime, f = 1850 + Math.random()*600;
+  [[1, 1, 1.4], [2.71, 0.45, 0.8], [5.17, 0.22, 0.4], [8.6, 0.1, 0.22]].forEach(([m, a, d]) => {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = f*m;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.08*v*a, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g); g.connect(A.master); o.start(t); o.stop(t + d + 0.05);
+  });
+}
+function onThunder(power){
+  if (!A.ctx || !A.on) return;
+  const ctx = A.ctx, t0 = ctx.currentTime + 0.25 + Math.random()*1.1;
+  const src = ctx.createBufferSource(); src.buffer = A.brown; src.loop = true;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 150 + Math.random()*120;
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(0.9*power, t0 + 0.07);
+  let tt = t0 + 0.07;
+  for (let i=0;i<5;i++){ tt += 0.2 + Math.random()*0.5; g.gain.exponentialRampToValueAtTime(Math.max(0.02, (0.25 + Math.random()*0.6)*power*(1 - i*0.13)), tt); }
+  g.gain.exponentialRampToValueAtTime(0.0001, tt + 2.6);
+  src.connect(lp); lp.connect(g); g.connect(A.muffle); src.start(t0, Math.random()*2); src.stop(tt + 2.8);
+  const cr = ctx.createBufferSource(); cr.buffer = A.white;
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 520; bp.Q.value = 0.6;
+  const cg = ctx.createGain(); cg.gain.setValueAtTime(0.0001, t0 - 0.05); cg.gain.exponentialRampToValueAtTime(0.35*power, t0 - 0.03); cg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.35);
+  cr.connect(bp); bp.connect(cg); cg.connect(A.muffle); cr.start(t0 - 0.05, Math.random()); cr.stop(t0 + 0.4);
+}
+function onShakeKnock(peak){
+  if (peak > 5) tink(Math.min(1, peak/12));
+  splash(Math.min(1, peak/10));
+}
+
+/* ---------------- condensation on the inside of the glass ---------------- */
+const GW = 256, GH = 352;
+const mkC = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const fogC = mkC(GW, GH), fgx = fogC.getContext('2d');
+const beadC = mkC(GW, GH), bdx = beadC.getContext('2d');
+const dropC = mkC(GW, GH), drx = dropC.getContext('2d');
+const NEUTRAL = 'rgb(128,128,0)';
+fgx.fillStyle = '#000'; fgx.fillRect(0, 0, GW, GH);
+bdx.fillStyle = NEUTRAL; bdx.fillRect(0, 0, GW, GH);
+const sprite = (() => {
+  const n = 48, c = mkC(n, n), x = c.getContext('2d'), im = x.createImageData(n, n);
+  for (let j=0;j<n;j++) for (let i=0;i<n;i++){
+    const dx = (i + 0.5)/n*2 - 1, dy = (j + 0.5)/n*2 - 1, d = Math.hypot(dx, dy), o = (j*n + i)*4;
+    if (d >= 1) continue;
+    const h = Math.sqrt(1 - d*d);
+    im.data[o] = 128 + dx*127; im.data[o+1] = 128 + dy*127; im.data[o+2] = 60 + h*195;
+    im.data[o+3] = 255*Math.min(1, (1 - d)/0.14);
+  }
+  x.putImageData(im, 0, 0); return c;
+})();
+const fogGrad = (() => { const g = fgx.createLinearGradient(0, 0, 0, GH); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.55, 'rgba(255,255,255,.8)'); g.addColorStop(1, 'rgba(255,255,255,.55)'); return g; })();
+const drops = [];
+const hand = { x: 0, y: 1.3, a: 0 };
+let fogAcc = 0, glassIdle = 0;
+const toGX = lx => (lx*0.5 + 0.5)*GW, toGY = ly => (1 - ly/2.75)*GH;
+function bead(x, y, r){ bdx.drawImage(sprite, x - r, y - r, r*2, r*2); }
+function addDrop(x, y, r){ if (drops.length < 46) drops.push({ x, y, r, v: 0, stick: Math.random()*0.6, go: 0 }); }
+function splash(v){
+  const wl = toGY(0.72);
+  const n = Math.round(2 + v*5);
+  for (let i=0;i<n;i++) addDrop(Math.random()*GW, wl - Math.random()*(wl - 20), 1.8 + Math.random()*2.4*v);
+  for (let i=0;i<40*v;i++) bead(Math.random()*GW, Math.random()*wl, 0.6 + Math.random()*1.3);
+}
+// a morning jar: some dew already beaded near the lid
+for (let i=0;i<420;i++){ const y = Math.pow(Math.random(), 1.8)*GH*0.7; bead(Math.random()*GW, y, 0.5 + Math.random()*1.6*(1 - y/GH)); }
+for (let i=0;i<4;i++) addDrop(20 + Math.random()*(GW - 40), 20 + Math.random()*GH*0.4, 2.4 + Math.random()*1.2);
+
+function glassUpdate(dt){
+  const dew = S.dew;
+  if (dew < 0.02 && drops.length === 0 && hand.a < 0.02) glassIdle += dt; else glassIdle = 0;
+  if (glassIdle > 8) return false;
+  fogAcc += dt;
+  if (fogAcc >= 0.1){
+    const st = fogAcc; fogAcc = 0;
+    fgx.globalCompositeOperation = 'source-over';
+    if (dew > 0.02){ fgx.globalAlpha = Math.min(1, st*0.5*dew); fgx.fillStyle = fogGrad; fgx.fillRect(0, 0, GW, GH); }
+    fgx.globalAlpha = Math.min(1, st*(0.06 + 0.38*(1 - dew))); fgx.fillStyle = '#000'; fgx.fillRect(0, 0, GW, GH);
+    if (dew < 0.3){ bdx.globalAlpha = Math.min(1, st*(0.12 + 0.3*(0.3 - dew))); bdx.fillStyle = NEUTRAL; bdx.fillRect(0, 0, GW, GH); bdx.globalAlpha = 1; }
+    if (hand.a > 0.05){
+      const hx = toGX(hand.x), hy = toGY(hand.y), hr = 52;
+      const g = fgx.createRadialGradient(hx, hy, 0, hx, hy, hr);
+      g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      fgx.globalAlpha = Math.min(1, st*1.2*hand.a); fgx.fillStyle = g; fgx.fillRect(hx - hr, hy - hr, hr*2, hr*2);
+    }
+    fgx.globalAlpha = 1;
+  }
+  if (dew > 0.25){ const n = Math.floor(dew*dt*150 + Math.random()); for (let i=0;i<n;i++) bead(Math.random()*GW, Math.pow(Math.random(), 1.3)*GH*0.92, 0.5 + Math.random()*1.6); }
+  if (dew > 0.45 && Math.random() < (dew - 0.45)*dt*1.6) addDrop(10 + Math.random()*(GW - 20), 10 + Math.random()*GH*0.5, 2.2 + Math.random()*1.4);
+  const sa = Math.sin(J.ang), ca = Math.cos(J.ang), frozen = S.frost > 0.55;
+  fgx.fillStyle = '#000';
+  for (let i=drops.length-1;i>=0;i--){
+    const d = drops[i];
+    if (!frozen){
+      d.r = Math.min(5.5, d.r + dt*0.06*dew);
+      d.stick -= dt;
+      if (d.stick < 0){ d.go = d.go > 0 ? 0 : 1; d.stick = d.go ? 0.2 + Math.random()*0.9 : 0.1 + Math.random()*0.7; }
+      const sp = d.r > 2.5 && d.go ? (d.r - 2.2)*30 : 0;
+      d.v = approach(d.v, sp, 8, dt);
+      const px = d.x, py = d.y;
+      d.x += (-sa*d.v + (Math.random() - 0.5)*d.v*0.4)*dt;
+      d.y += ca*d.v*dt;
+      if (d.v > 1){
+        bdx.fillStyle = NEUTRAL; bdx.beginPath(); bdx.arc(d.x, d.y, d.r*1.1, 0, 6.283); bdx.fill();
+        fgx.globalAlpha = 0.7; fgx.beginPath(); fgx.arc(d.x, d.y, d.r*1.35, 0, 6.283); fgx.fill(); fgx.globalAlpha = 1;
+        if (Math.random() < 0.25*(Math.hypot(d.x - px, d.y - py))) bead(px, py - d.r*0.6, d.r*(0.25 + Math.random()*0.2));
+      }
+    }
+    if (d.y > GH - 4 || d.x < -6 || d.x > GW + 6) drops.splice(i, 1);
+  }
+  drx.globalCompositeOperation = 'copy'; drx.drawImage(beadC, 0, 0); drx.globalCompositeOperation = 'source-over';
+  for (const d of drops) drx.drawImage(sprite, d.x - d.r, d.y - d.r*1.25, d.r*2, d.r*2.5);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, dropTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, dropC);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, fogTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, fogC);
+  return true;
+}
+/* ---------------- the jar keeps its own weather when left alone ---------------- */
+const AP = { mode: null, t: 0, dur: 0, next: WALL ? 5 : 14, x: 0, cold: false };
+function autoStorm(){ return 0; }
+function autoWarm(){ return AP.mode === 'warm'; }
+let keyWarm = false;
+function autopilot(dt){
+  const idle = WALL || performance.now() - lastInteract > 25000;
+  if (!idle){ if (AP.mode) apEnd(); return; }
+  if (AP.mode){
+    AP.t += dt;
+    if (AP.mode === 'shake'){
+      const env = Math.sin(Math.min(1, AP.t/AP.dur)*Math.PI);
+      AP.x = Math.sin(AP.t*Math.PI*2*1.9)*R*(reduced ? 0.08 : 0.32)*env;
+      S.storm = Math.min(0.95, S.storm + dt*0.3);
+      if (Math.random() < dt*3) splash(0.5);
+    }
+    if (AP.t > AP.dur) apEnd();
+  } else {
+    AP.next -= dt;
+    if (AP.next <= 0){
+      const r = Math.random(), sunE = Math.sin((S.day - 0.25)*Math.PI*2);
+      AP.mode = r < 0.5 ? 'shake' : r < 0.75 ? 'warm' : 'cold';
+      if (AP.mode === 'cold' && windowOpen) AP.mode = 'warm';
+      if (AP.mode === 'shake' && S.storm > 0.5) AP.mode = sunE > 0 ? 'warm' : 'cold';
+      AP.t = 0; AP.dur = AP.mode === 'shake' ? 2.8 : AP.mode === 'warm' ? 11 : 32;
+      if (AP.mode === 'cold'){ AP.cold = true; S.ambient = -9; }
+    }
+  }
+}
+function apEnd(){
+  if (AP.cold && !windowOpen) S.ambient = 17;
+  AP.cold = false; AP.mode = null; AP.x = 0;
+  AP.next = (WALL ? 22 : 28) + Math.random()*30;
+}
+
+/* ---------------- input ---------------- */
+function noteInteract(){ lastInteract = performance.now(); document.getElementById('hint').classList.add('gone'); }
+canvas.addEventListener('pointerdown', e => {
+  if (!onJar(e.clientX, e.clientY)) return;
+  noteInteract();
+  ptr.down = true; ptr.id = e.pointerId;
+  ptr.grabDX = e.clientX - (homeX + J.x);
+  ptr.x = e.clientX; ptr.y = e.clientY; ptr.lastX = e.clientX; ptr.lastT = performance.now(); ptr.vx = 0; ptr.peak = 0; ptr.lastSign = 0;
+  ptr.ax = e.clientX; ptr.ay = e.clientY; ptr.lastMoveT = ptr.lastT; ptr.downT = ptr.lastT; ptr.moved = 0;
+  canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+  canvas.classList.add('drag');
+});
+canvas.addEventListener('pointermove', e => {
+  if (!ptr.down){ canvas.classList.toggle('over', onJar(e.clientX, e.clientY)); return; }
+  if (e.pointerId !== ptr.id) return;
+  const now = performance.now(), dtm = Math.max(4, now - ptr.lastT);
+  const v = (e.clientX - ptr.lastX) / dtm * 1000 / R;
+  ptr.vx = ptr.vx*0.5 + v*0.5;
+  ptr.moved += Math.hypot(e.clientX - ptr.x, e.clientY - ptr.y);
+  ptr.x = e.clientX; ptr.y = e.clientY; ptr.lastX = e.clientX; ptr.lastT = now;
+  if (Math.hypot(e.clientX - ptr.ax, e.clientY - ptr.ay) > R*0.06){ ptr.ax = e.clientX; ptr.ay = e.clientY; ptr.lastMoveT = now; }
+  noteInteract();
+});
+const endPtr = e => {
+  if (!ptr.down || (e && e.pointerId !== ptr.id)) return;
+  if (ptr.moved < 8 && performance.now() - ptr.downT < 280){ tink(0.55); J.va += (Math.random() < 0.5 ? -1 : 1)*0.6; }
+  ptr.down = false; ptr.vx = 0; canvas.classList.remove('drag');
+};
+canvas.addEventListener('pointerup', endPtr);
+canvas.addEventListener('pointercancel', endPtr);
+
+document.getElementById('snd').addEventListener('click', e => {
+  const want = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  if (setSound(want)) e.currentTarget.setAttribute('aria-pressed', String(want));
+});
+document.getElementById('win').addEventListener('click', e => {
+  windowOpen = !windowOpen;
+  e.currentTarget.setAttribute('aria-pressed', String(windowOpen));
+  e.currentTarget.lastChild.textContent = windowOpen ? 'Close the window' : 'Open the window';
+  S.ambient = windowOpen ? -9 : 17; AP.cold = false;
+  paintRoom(); noteInteract();
+});
+
+/* ---------------- loop ---------------- */
+let last = performance.now(), labelT = 0, perfAcc = 0, perfN = 0, lost = false;
+function frame(now){
+  requestAnimationFrame(frame);
+  if (lost) return;
+  if (WALL && now - last < 31) return;
+  const dt = Math.min(0.05, Math.max(0.001, (now - last)/1000));
+  last = now;
+  if (!WALL && !document.hidden){
+    perfAcc += dt; perfN++;
+    if (perfN >= 90){
+      const avg = perfAcc/perfN; perfAcc = 0; perfN = 0;
+      if (avg > 0.026 && resScale > 0.55){ resScale -= 0.15; layout(); }
+    }
+  }
+  autopilot(dt);
+  update(dt);
+  soundUpdate(dt);
+  glassUpdate(dt);
+  if (now - labelT > 250){ labelT = now; updateLabels(now); }
+  gl.uniform2f(U.uRes, canvas.width, canvas.height);
+  gl.uniform4f(U.uJar, (homeX + J.x)*DPR, (H - footY + J.lift*R)*DPR, R*DPR, J.ang);
+  const f1 = (n, v) => gl.uniform1f(U[n], v);
+  f1('uTime', S.t); f1('uDay', S.day); f1('uStorm', S.storm); f1('uCover', S.cover); f1('uTowerH', S.towerH);
+  f1('uBase', S.base); f1('uAnvil', S.anvil); f1('uSheet', S.sheet); f1('uRain', S.rain); f1('uSnow', S.snow);
+  f1('uMist', S.mist); f1('uFrost', S.frost); f1('uFlash', S.flash); f1('uBoltX', S.boltX); f1('uBoltSeed', S.boltSeed);
+  f1('uRainbow', S.rainbow); f1('uSlosh', S.slosh); f1('uWave', S.wave); f1('uLean', S.lean); f1('uWarp', S.warp);
+  f1('uWind', S.wind); f1('uIce', S.ice); f1('uSnowCover', S.snowCover); f1('uLift', J.lift/0.14); f1('uWater', 0.72);
+  gl.uniform2f(U.uCloudOff, S.cloudOff[0], S.cloudOff[1]);
+  gl.uniform3f(U.uHand, hand.x, hand.y, hand.a);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+const jarKey = document.getElementById('jarKey');
+let kSign = 1;
+jarKey.addEventListener('keydown', e => {
+  const k = e.key;
+  if (k === 'ArrowLeft' || k === 'ArrowRight'){ J.vx += (k === 'ArrowLeft' ? -1 : 1)*R*2.2; e.preventDefault(); noteInteract(); }
+  else if (k === 's' || k === 'S' || k === ' '){ kSign = -kSign; J.vx += kSign*R*7; addStorm(0.07); onShakeKnock(7); e.preventDefault(); noteInteract(); }
+  else if (k === 'Enter'){ keyWarm = true; e.preventDefault(); noteInteract(); }
+});
+jarKey.addEventListener('keyup', e => { if (e.key === 'Enter') keyWarm = false; });
+jarKey.addEventListener('blur', () => keyWarm = false);
+canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); lost = true; });
+canvas.addEventListener('webglcontextrestored', () => location.reload());
+if (WALL) document.getElementById('hint').classList.add('gone');
+layout();
+let rzT = 0;
+addEventListener('resize', () => { clearTimeout(rzT); rzT = setTimeout(layout, 80); });
+requestAnimationFrame(frame);
+})();
+</script>
