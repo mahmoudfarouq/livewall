@@ -13,7 +13,10 @@ bin=${1:-}
 for candidate in "$bin" "$root/livewall" "$root/.build/release/livewall"; do
   if [ -n "$candidate" ] && [ -f "$candidate" ] && [ -x "$candidate" ]; then bin=$candidate; break; fi
 done
-[ -n "$bin" ] && [ -x "$bin" ] || { echo "livewall binary not found; run 'swift build -c release' first" >&2; exit 1; }
+if [ -z "$bin" ] || [ ! -x "$bin" ]; then
+  echo "livewall binary not found; run 'swift build -c release' first" >&2
+  exit 1
+fi
 
 presets="$prefix/share/livewall/presets"
 mkdir -p "$prefix/bin" "$presets"
@@ -22,5 +25,6 @@ cp "$bin" "$prefix/bin/livewall"
 xattr -d com.apple.quarantine "$prefix/bin/livewall" 2>/dev/null || true
 cp "$root"/presets/*.html "$presets/"
 
-echo "installed $prefix/bin/livewall and $(ls "$root"/presets/*.html | wc -l | tr -d ' ') presets"
+set -- "$root"/presets/*.html
+echo "installed $prefix/bin/livewall and $# presets"
 case ":$PATH:" in *":$prefix/bin:"*) ;; *) echo "note: add $prefix/bin to your PATH" ;; esac
