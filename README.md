@@ -1,50 +1,91 @@
 # livewall
 
-A tiny macOS command-line tool that shows an HTML file or URL as your live desktop
-wallpaper, on every screen. Hold a modifier key (Option by default) to click, drag and
-scroll the page; let go and it is wallpaper again. No app, no menu bar item, no
-permissions prompt. Swift + AppKit + WebKit, macOS 13+.
+A tiny macOS command-line tool that shows an HTML page as your live desktop wallpaper,
+on every screen. Hold a modifier key (Option by default) to click, drag and scroll the page;
+let go and it is wallpaper again. No app, no menu bar item, no permission prompts.
+It comes with a set of hand-made pages (presets), and takes any local file or URL too.
 
 ```sh
-livewall set ~/Documents/personal/night-city/index.html
+livewall set night-city
 ```
+
+## Requirements
+
+- macOS 13 or later
+- A Swift toolchain (Xcode or the Command Line Tools, Swift 5.9+)
+
+Only AppKit and WebKit are used; there are no third-party dependencies.
 
 ## Build and install
 
 ```sh
-swift build -c release
-mkdir -p ~/.local/bin
-cp .build/release/livewall ~/.local/bin/   # make sure ~/.local/bin is on your PATH
+git clone <this repo> && cd livewall
+make install
 ```
 
-To start it at login, add `livewall set …` to your shell profile or a login item yourself;
-livewall does not install anything.
+`make install` builds a release binary and copies it to `~/.local/bin/livewall`, and the
+presets to `~/.local/share/livewall/presets`. It installs for your user only (no sudo); make
+sure `~/.local/bin` is on your `PATH`. `make uninstall` removes both. To build without
+installing, run `swift build -c release` and use `.build/release/livewall`, which finds the
+presets in the repo.
 
-## Commands
+livewall doesn't add itself to login items. To start it at login, run `livewall set …` from
+your shell profile or a login item.
+
+## Usage
 
 | command | what it does |
 | --- | --- |
-| `livewall set <path-or-url> [options]` | starts the wallpaper daemon (replacing any running one) and returns |
+| `livewall set <preset\|path\|url> [options]` | starts the wallpaper daemon (replacing any running one) and returns |
+| `livewall set --random [options]` | shows a random preset |
+| `livewall presets` (or `list`) | lists the presets with their titles |
 | `livewall stop` | stops it |
 | `livewall status` | url, key, screens, pid and log path of the running daemon |
 | `livewall reload` | reloads the page on every screen (e.g. after editing the file) |
 | `livewall --help` | usage |
 
+```sh
+livewall set ink-water                       # a preset
+livewall set ~/Sites/my-piece/index.html     # a local file (or a folder with index.html)
+livewall set https://example.com --screen main --key control
+```
+
 Options for `set`:
 
-- `--key option|control|command|fn` – the key to hold for interaction (default `option`).
-- `--screen all|main` – every screen, or only the one with the menu bar (default `all`).
-- `--fps N` – appends `?fps=N` to the URL for pages that read it. livewall does not cap the
+- `--key option|control|command|fn`: the key to hold for interaction (default `option`).
+- `--screen all|main`: every screen, or only the one with the menu bar (default `all`).
+- `--fps N`: appends `?fps=N` to the URL for pages that read it. livewall does not cap the
   frame rate itself; WebKit renders at the display's refresh rate.
-- `--wallpaper-hash` / `--no-wallpaper-hash` – local files get `#wallpaper` appended by default
-  (unless the URL already has a fragment), so a page can switch to a calmer wallpaper mode.
+- `--wallpaper-hash` / `--no-wallpaper-hash`: local files and presets get `#wallpaper`
+  appended by default (unless the URL already has a fragment), so a page can switch to a
+  calmer wallpaper mode. Newer pieces read it; the first four presets ignore it for now.
 
-A local path becomes a `file://` URL with read access to its folder, so relative assets load;
-a folder path loads its `index.html`.
+An existing path or URL always wins over a preset name. A local path becomes a `file://` URL
+with read access to its folder, so relative assets load.
 
 The daemon is the same binary re-executed as `livewall daemon …` in its own session, so
 closing the terminal does not kill it. It keeps `state.json`, `livewall.pid` and
 `livewall.log` in `~/Library/Application Support/livewall/`.
+
+## Presets
+
+| slug | title |
+| --- | --- |
+| `ink-water` | Floating Ink |
+| `night-city` | Lights Left On |
+| `pocket-universe` | Pocket Universe |
+| `word-creatures` | Living Type Specimen |
+
+Each preset is one self-contained HTML file in `presets/`, named `<slug>.html`
+(`night-city` loads three.js from cdnjs, so it needs a network connection).
+
+**Adding your own:** drop an HTML file into `presets/` (the file name is the slug, the
+`<title>` is what `livewall presets` shows) and run `make install` again. livewall looks for
+presets in this order, and the first match wins:
+
+1. `$LIVEWALL_PRESETS`
+2. `~/.local/share/livewall/presets`
+3. `presets/` in the repo, when running from its `.build` folder
 
 ## How it works
 
