@@ -1,0 +1,1722 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Wood Wide Web</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=Newsreader:ital,opsz,wght@1,6..72,400;1,6..72,500&display=swap');
+:root{
+  color-scheme: dark;
+  --soil:#1b130d;
+  --ink:#ece5d3;
+  --ink-dim:rgba(236,229,211,.66);
+  --ink-faint:rgba(236,229,211,.36);
+  --hypha:#ece5d3;
+  --sugar:#ffb347;
+  --nutrient:#9ccfff;
+  --panel:rgba(26,19,14,.66);
+  --panel-line:rgba(236,229,211,.14);
+  --chip-on:rgba(236,229,211,.16);
+  --focus:#ffd28a;
+}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--soil);}
+body{font-family:Figtree,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased;}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair;}
+.ui{position:fixed;z-index:2;}
+#head{top:max(14px,env(safe-area-inset-top));left:max(16px,env(safe-area-inset-left));max-width:min(430px,calc(100vw - 32px));pointer-events:none;text-shadow:0 1px 8px rgba(10,14,18,.6);}
+h1{font-weight:500;font-size:23px;line-height:1.1;margin:0 0 5px;letter-spacing:-.01em;}
+#head p{margin:0;font-size:13.5px;line-height:1.45;color:var(--ink-dim);}
+#status{margin-top:7px!important;color:var(--ink)!important;}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-size:12.5px;color:var(--ink-dim);}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:7px;vertical-align:1px;}
+.dot.s{background:var(--sugar);box-shadow:0 0 8px var(--sugar);}
+.dot.n{background:var(--nutrient);box-shadow:0 0 8px var(--nutrient);}
+.layer{position:fixed;z-index:1;left:max(16px,env(safe-area-inset-left));font-size:12px;color:var(--ink-faint);transform:translateY(-50%);pointer-events:none;white-space:nowrap;}
+#controls{left:max(16px,env(safe-area-inset-left));right:max(16px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));display:flex;flex-wrap:wrap;gap:8px;align-items:center;pointer-events:none;}
+#controls>*{pointer-events:auto;}
+.pill{display:flex;flex-wrap:wrap;gap:2px;align-items:center;background:var(--panel);border:1px solid var(--panel-line);border-radius:22px;padding:3px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);}
+.lbl{font-size:12.5px;color:var(--ink-dim);padding:0 6px 0 10px;}
+button{font:500 13px/1 Figtree,system-ui,sans-serif;color:var(--ink);background:transparent;border:0;border-radius:18px;padding:8px 11px;min-height:34px;cursor:pointer;}
+button:hover{background:rgba(236,229,211,.08);}
+.pill button[aria-pressed="true"]{background:var(--chip-on);}
+button:focus-visible{outline:2px solid var(--focus);outline-offset:2px;}
+#tip{position:fixed;z-index:3;pointer-events:none;background:rgba(22,17,13,.9);border:1px solid var(--panel-line);border-radius:10px;padding:9px 12px 10px;max-width:250px;font-size:12.5px;line-height:1.45;color:var(--ink-dim);box-shadow:0 8px 24px rgba(0,0,0,.35);}
+#tip i{font-family:Newsreader,Georgia,serif;font-size:17px;color:var(--ink);display:block;line-height:1.2;}
+#tip b{font-weight:500;color:var(--ink);display:block;margin-bottom:3px;}
+#tip[hidden]{display:none;}
+.wall .ui,.wall .layer,.wall #tip{display:none!important;}
+.wall #c{cursor:default;}
+@media (max-width:600px){
+  h1{font-size:20px;}
+  #head p{font-size:12.5px;}
+  .lbl{display:none;}
+  button{padding:8px 9px;font-size:12.5px;}
+}
+@media (max-height:520px){ .legend{display:none;} }
+</style>
+
+<canvas id="c" aria-label="A cross-section of a forest floor: trees above ground, a fungal network threading the soil below"></canvas>
+<header class="ui" id="head">
+  <h1>Mycelium</h1>
+  <p id="hint">Click to plant a tree. Drag through the soil to cut a thread.</p>
+  <p id="status"></p>
+  <div class="legend"><span><i class="dot s"></i>Sugar from trees</span><span><i class="dot n"></i>Water and nutrients to trees</span></div>
+</header>
+<span class="layer" id="lO">Leaf litter</span>
+<span class="layer" id="lA">Humus</span>
+<span class="layer" id="lB">Mineral soil</span>
+<nav class="ui" id="controls" aria-label="Controls">
+  <div class="pill" role="group" aria-label="Next tree to plant">
+    <span class="lbl">Next tree</span>
+    <button data-sp="birch" aria-pressed="true">Birch</button>
+    <button data-sp="oak" aria-pressed="false">Oak</button>
+    <button data-sp="pine" aria-pressed="false">Pine</button>
+    <button data-sp="beech" aria-pressed="false">Beech</button>
+    <button data-sp="spruce" aria-pressed="false">Spruce</button>
+  </div>
+  <div class="pill"><button id="rainBtn">Bring rain</button><button id="sndBtn" aria-pressed="false">Sound off</button></div>
+</nav>
+<div id="tip" role="tooltip" hidden></div>
+
+<script>
+(() => {
+'use strict';
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const rootStyle = getComputedStyle(document.documentElement);
+const tok = (n, d) => (rootStyle.getPropertyValue(n) || '').trim() || d;
+const COL = { hypha: tok('--hypha', '#ece5d3'), sugar: tok('--sugar', '#ffb347'), nut: tok('--nutrient', '#9ccfff') };
+
+// ---------- utils ----------
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[(Math.random() * a.length) | 0];
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+const easeOut = t => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
+const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
+const hexRGB = h => { h = h.replace('#', ''); return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; };
+const mixRGB = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+const rgb = (c, k = 1) => `rgb(${clamp(c[0] * k, 0, 255) | 0},${clamp(c[1] * k, 0, 255) | 0},${clamp(c[2] * k, 0, 255) | 0})`;
+const rgba = (c, a, k = 1) => `rgba(${clamp(c[0] * k, 0, 255) | 0},${clamp(c[1] * k, 0, 255) | 0},${clamp(c[2] * k, 0, 255) | 0},${a})`;
+function segX(ax, ay, bx, by, cx, cy, dx, dy) {
+  const d = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+  if (d === 0) return null;
+  const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / d;
+  const u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / d;
+  return (t >= 0 && t <= 1 && u >= 0 && u <= 1) ? t : null;
+}
+
+// ---------- species ----------
+const TREE_SP = {
+  birch:  { name: 'Silver birch', latin: 'Betula pendula', bark: '#d9d3c5', dec: true, spring: '#a9bd6c', summer: '#6f8c47', autumn: '#d4a42c', winterKeep: 0, trunk: .028, note: 'A pioneer tree. Fly agaric fruits under birch more than anywhere else.' },
+  oak:    { name: 'Pedunculate oak', latin: 'Quercus robur', bark: '#4d4036', dec: true, spring: '#a3b26a', summer: '#56703b', autumn: '#9a6a2f', winterKeep: .14, trunk: .055, note: 'Hosts dozens of fungal partners. Young oaks keep dry leaves through winter.' },
+  pine:   { name: 'Scots pine', latin: 'Pinus sylvestris', bark: '#93593a', dec: false, ever: '#3f5940', trunk: .036, note: 'Evergreen, so it still trades sugar in winter. Slippery jack partners with pines only.' },
+  beech:  { name: 'European beech', latin: 'Fagus sylvatica', bark: '#8d8c85', dec: true, spring: '#b4c56e', summer: '#5d7c3c', autumn: '#b9652a', winterKeep: .12, trunk: .042, note: 'Casts deep shade. Its seedlings can live on sugar passed through the network.' },
+  spruce: { name: 'Norway spruce', latin: 'Picea abies', bark: '#4e3c2e', dec: false, ever: '#2f4a3c', trunk: .036, note: 'Shallow, wide roots. Shares partners with pine and birch.' },
+};
+for (const k in TREE_SP) { const s = TREE_SP[k]; for (const f of ['spring', 'summer', 'autumn', 'ever']) if (s[f]) s[f + 'C'] = hexRGB(s[f]); }
+
+const FUNGI = {
+  amanita:     { latin: 'Amanita muscaria', common: 'Fly agaric', hosts: ['birch', 'pine', 'spruce'], tint: '#efe9dd', spore: '#f4f1e8', note: 'White gills. The warts are scraps of the veil that wrapped the young button.' },
+  chanterelle: { latin: 'Cantharellus cibarius', common: 'Golden chanterelle', hosts: ['oak', 'beech', 'birch', 'spruce'], tint: '#f1e3bd', spore: '#f0dcae', note: 'No true gills: blunt, forking ridges run down the stem.' },
+  porcini:     { latin: 'Boletus edulis', common: 'Penny bun', hosts: ['pine', 'spruce', 'oak', 'beech', 'birch'], tint: '#e8e3d6', spore: '#9a8a4a', note: 'Pores, not gills. Spores fall from a sponge of tubes under the cap.' },
+  laccaria:    { latin: 'Laccaria amethystina', common: 'Amethyst deceiver', hosts: ['beech', 'oak'], tint: '#ddd2ec', spore: '#f2eef6', note: 'Thick, widely spaced gills. Fades from violet to buff as it dries.' },
+  suillus:     { latin: 'Suillus luteus', common: 'Slippery jack', hosts: ['pine'], tint: '#efdcab', spore: '#8b6a3a', note: 'Partners with pines only. Slimy cap, yellow pores, a dark ring on the stem.' },
+};
+for (const k in FUNGI) FUNGI[k].tintC = hexRGB(FUNGI[k].tint);
+
+// ---------- state ----------
+const WALL = () => location.hash === '#wallpaper';
+const RMQ = matchMedia('(prefers-reduced-motion: reduce)');
+let RM = RMQ.matches;
+const onRM = e => { RM = e.matches; };
+if (RMQ.addEventListener) RMQ.addEventListener('change', onRM); else if (RMQ.addListener) RMQ.addListener(onRM);
+
+let W = 0, H = 0, DPR = 1, G = 0, LIT = 0, HUM = 0, SZ = 1, CAP = 1800, TIPCAP = 70;
+let T = 0;               // sim seconds
+let season = 1.5;        // 0 spring .. 4
+let moist = 0.3, wind = 0.5;
+const trees = [];
+const colonies = [];
+const nodes = new Map();
+let tips = [];
+const pulses = [];
+const flashes = [];
+const sparks = [];
+let rootTips = [];
+let contactList = [];
+let compInfo = [];
+let nid = 1, treeId = 0, colId = 0;
+let lastInput = -999, nextAuto = 8;
+let selSp = 'birch';
+
+// ---------- spatial grid ----------
+const CELL = 14;
+let grid = new Map();
+const gk = (x, y) => ((x / CELL) | 0) * 8192 + ((y / CELL) | 0);
+function gridAdd(n) { const k = gk(n.x, n.y); let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(n); n.gk = k; }
+function gridDel(n) { const a = grid.get(n.gk); if (!a) return; const i = a.indexOf(n); if (i >= 0) { a[i] = a[a.length - 1]; a.pop(); } }
+function gridRebuild() { grid = new Map(); for (const n of nodes.values()) gridAdd(n); }
+function near(x, y, r, fn) {
+  const x0 = ((x - r) / CELL) | 0, x1 = ((x + r) / CELL) | 0, y0 = ((y - r) / CELL) | 0, y1 = ((y + r) / CELL) | 0;
+  for (let i = x0; i <= x1; i++) for (let j = y0; j <= y1; j++) {
+    const a = grid.get(i * 8192 + j); if (!a) continue;
+    for (let k = 0; k < a.length; k++) if (fn(a[k])) return a[k];
+  }
+  return null;
+}
+
+// ---------- graph ----------
+function addNode(x, y, col) {
+  const n = { id: nid++, x, y, adj: new Set(), col, born: T, contact: -1, rt: null, w: 0, comp: -1, fade: 1, cs: 0, bv: 0, bp: 0, bd: 0 };
+  nodes.set(n.id, n); gridAdd(n); return n;
+}
+function link(a, b) { if (a === b) return; a.adj.add(b.id); b.adj.add(a.id); }
+function unlink(a, b) { a.adj.delete(b.id); b.adj.delete(a.id); }
+function removeNode(n) {
+  for (const j of n.adj) { const m = nodes.get(j); if (m) m.adj.delete(n.id); }
+  if (n.rt) n.rt.hosts = Math.max(0, n.rt.hosts - 1);
+  gridDel(n); nodes.delete(n.id);
+}
+
+// ---------- layout ----------
+const bg = document.createElement('canvas'), bgx = bg.getContext('2d');
+const vig = document.createElement('canvas'), vgx = vig.getContext('2d');
+
+function layout() {
+  const w = Math.max(320, window.innerWidth), h = Math.max(320, window.innerHeight);
+  const portrait = h > w * 1.1;
+  const g = Math.round(h * (portrait ? 0.35 : 0.41));
+  return { w, h, g };
+}
+function remapAll(ow, oh, og, nw, nh, ng) {
+  const sx = nw / ow;
+  const fy = y => y >= og ? ng + (y - og) * (nh - ng) / (oh - og) : y * ng / og;
+  for (const n of nodes.values()) { n.x *= sx; n.y = fy(n.y); }
+  for (const t of trees) {
+    t.x *= sx;
+    for (const s of t.segs) { s.x1 *= sx; s.x2 *= sx; s.y1 = fy(s.y1); s.y2 = fy(s.y2); }
+    for (const r of t.tips) { r.x *= sx; r.y = fy(r.y); }
+  }
+  for (const c of colonies) { c.x *= sx; c.y = fy(c.y); }
+  for (const p of extraRemap) p(sx, fy);
+  pulses.length = 0; flashes.length = 0; sparks.length = 0;
+  gridRebuild();
+}
+const extraRemap = [];
+
+function resize() {
+  const L = layout();
+  const ow = W, oh = H, og = G;
+  W = L.w; H = L.h; G = L.g;
+  DPR = Math.min(window.devicePixelRatio || 1, WALL() ? 1.5 : 1.75);
+  LIT = Math.max(10, Math.round((H - G) * 0.05));
+  HUM = Math.round(G + (H - G) * 0.42);
+  SZ = clamp(Math.min(W, H) / 850, 0.62, 1.3);
+  CAP = Math.round(clamp(W * (H - G) / 150, 900, 3200));
+  TIPCAP = Math.round(clamp(CAP / 20, 40, 130));
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  if (ow && (ow !== W || oh !== H || og !== G)) remapAll(ow, oh, og, W, H, G);
+  renderBG();
+  placeLabels();
+}
+
+function placeLabels() {
+  const set = (id, y) => { const el = document.getElementById(id); if (el) el.style.top = y + 'px'; };
+  set('lO', G + LIT / 2 + 1);
+  set('lA', (G + LIT + HUM) / 2);
+  set('lB', (HUM + H) / 2 - 20);
+}
+
+function renderBG() {
+  bg.width = cv.width; bg.height = cv.height;
+  const b = bgx;
+  b.setTransform(DPR, 0, 0, DPR, 0, 0);
+  b.clearRect(0, 0, W, H);
+  // distant forest, two depths of fog
+  const far = (alpha, n, hMin, hMax, dark) => {
+    b.fillStyle = `rgba(${dark},${alpha})`;
+    for (let i = 0; i < n; i++) {
+      const x = Math.random() * W, h = rand(hMin, hMax) * G, w = rand(.03, .06) * h;
+      if (Math.random() < .55) {
+        b.beginPath(); b.moveTo(x, G - h); b.lineTo(x + w * 2.2, G); b.lineTo(x - w * 2.2, G); b.closePath(); b.fill();
+      } else {
+        b.fillRect(x - w * .18, G - h * .9, w * .36, h * .9);
+        b.beginPath(); b.ellipse(x, G - h * .8, w * 2.2, h * .22, 0, 0, Math.PI * 2); b.fill();
+      }
+    }
+  };
+  far(.12, Math.round(W / 26), .35, .7, '26,34,40');
+  far(.17, Math.round(W / 40), .45, .9, '18,24,28');
+  // humus
+  let gr = b.createLinearGradient(0, G, 0, HUM + 30);
+  gr.addColorStop(0, '#2b1e14'); gr.addColorStop(1, '#1a120c');
+  b.fillStyle = gr; b.fillRect(0, G, W, HUM - G + 30);
+  // mineral horizon
+  gr = b.createLinearGradient(0, HUM, 0, H);
+  gr.addColorStop(0, '#36281b'); gr.addColorStop(.35, '#47331f'); gr.addColorStop(1, '#3b2d20');
+  b.fillStyle = gr;
+  b.beginPath(); b.moveTo(0, H);
+  for (let x = 0; x <= W + 8; x += 8) b.lineTo(x, HUM + Math.sin(x * .013) * 6 + Math.sin(x * .051) * 3 + rand(-2, 2));
+  b.lineTo(W, H); b.closePath(); b.fill();
+  // iron-stained banding in the mineral soil
+  for (let i = 0; i < 4; i++) {
+    const y = lerp(HUM + 30, H - 20, Math.random());
+    b.fillStyle = `rgba(120,70,30,${rand(.05, .1)})`;
+    b.beginPath(); b.moveTo(0, y);
+    for (let x = 0; x <= W + 10; x += 10) b.lineTo(x, y + Math.sin(x * .01 + i) * 8);
+    for (let x = W + 10; x >= 0; x -= 10) b.lineTo(x, y + 6 + rand(6, 14) + Math.sin(x * .01 + i) * 8);
+    b.closePath(); b.fill();
+  }
+  // humus/mineral mixing tongues
+  for (let i = 0; i < W / 14; i++) {
+    const x = Math.random() * W, y = HUM + rand(-10, 22);
+    b.fillStyle = Math.random() < .5 ? 'rgba(26,18,12,.55)' : 'rgba(70,52,34,.4)';
+    b.beginPath(); b.ellipse(x, y, rand(3, 12), rand(1.5, 5), rand(-.3, .3), 0, Math.PI * 2); b.fill();
+  }
+  // specks and grains
+  const area = W * (H - G);
+  for (let i = 0; i < area / 70; i++) {
+    const x = Math.random() * W, y = G + LIT + Math.random() * (H - G - LIT);
+    const mineral = y > HUM;
+    b.fillStyle = mineral ? pick(['rgba(140,110,80,.35)', 'rgba(30,20,12,.4)', 'rgba(170,150,120,.25)']) : pick(['rgba(10,6,4,.5)', 'rgba(70,50,32,.35)', 'rgba(50,36,22,.4)']);
+    const s = rand(.5, mineral ? 1.8 : 1.4);
+    b.fillRect(x, y, s, s);
+  }
+  // charcoal and old root channels in humus
+  b.lineCap = 'round';
+  for (let i = 0; i < W / 70; i++) {
+    let x = Math.random() * W, y = rand(G + LIT + 6, HUM + 20), a = rand(0, Math.PI);
+    b.strokeStyle = 'rgba(12,8,5,.45)'; b.lineWidth = rand(1, 2.5);
+    b.beginPath(); b.moveTo(x, y);
+    for (let k = 0; k < 8; k++) { a += rand(-.5, .5); x += Math.cos(a) * 7; y += Math.sin(a) * 7; b.lineTo(x, y); }
+    b.stroke();
+  }
+  // stones
+  for (let i = 0; i < W / 55; i++) {
+    const x = Math.random() * W, y = rand(HUM + 10, H - 8), rx = rand(4, 20) * SZ, ry = rx * rand(.5, .8), rot = rand(-.4, .4);
+    b.fillStyle = 'rgba(15,10,6,.45)';
+    b.beginPath(); b.ellipse(x + 1.5, y + 2, rx, ry, rot, 0, Math.PI * 2); b.fill();
+    const c = pick([[96, 86, 76], [110, 96, 80], [84, 78, 72], [120, 104, 86]]);
+    const sg = b.createLinearGradient(x, y - ry, x, y + ry);
+    sg.addColorStop(0, rgb(c, 1.15)); sg.addColorStop(1, rgb(c, .7));
+    b.fillStyle = sg; b.beginPath(); b.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2); b.fill();
+  }
+  // a few stones in humus too
+  for (let i = 0; i < W / 220; i++) {
+    const x = Math.random() * W, y = rand(G + LIT + 20, HUM), rx = rand(3, 8) * SZ;
+    b.fillStyle = 'rgba(92,82,72,.8)'; b.beginPath(); b.ellipse(x, y, rx, rx * .65, rand(-.4, .4), 0, Math.PI * 2); b.fill();
+  }
+  // litter band (O horizon): compressed leaf fragments
+  gr = b.createLinearGradient(0, G, 0, G + LIT);
+  gr.addColorStop(0, '#46321f'); gr.addColorStop(1, '#2e2015');
+  b.fillStyle = gr; b.fillRect(0, G, W, LIT + 1);
+  for (let i = 0; i < W * LIT / 22; i++) {
+    const x = Math.random() * W, y = G + Math.random() * LIT;
+    const deep = (y - G) / LIT;
+    b.fillStyle = rgba(mixRGB(pick([[110, 76, 40], [92, 62, 34], [128, 92, 50], [74, 52, 30]]), [36, 25, 17], deep * .8), rand(.5, .9));
+    b.beginPath(); b.ellipse(x, y, rand(2, 6) * SZ, rand(.6, 1.4), rand(-.25, .25), 0, Math.PI * 2); b.fill();
+  }
+  // soft bottom fade
+  gr = b.createLinearGradient(0, H - 60, 0, H);
+  gr.addColorStop(0, 'rgba(20,14,9,0)'); gr.addColorStop(1, 'rgba(20,14,9,.55)');
+  b.fillStyle = gr; b.fillRect(0, H - 60, W, 60);
+
+  vig.width = cv.width; vig.height = cv.height;
+  vgx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const vg = vgx.createRadialGradient(W / 2, H * .55, Math.min(W, H) * .35, W / 2, H * .55, Math.max(W, H) * .8);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(6,5,4,.5)');
+  vgx.fillStyle = vg; vgx.fillRect(0, 0, W, H);
+}
+
+// glow sprites
+function sprite(c, size = 64) {
+  const s = document.createElement('canvas'); s.width = s.height = size;
+  const x = s.getContext('2d'); const g = x.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  const C = hexRGB(c);
+  g.addColorStop(0, rgba([255, 255, 245], 1)); g.addColorStop(.12, rgba(C, .95)); g.addColorStop(.4, rgba(C, .28)); g.addColorStop(1, rgba(C, 0));
+  x.fillStyle = g; x.fillRect(0, 0, size, size); return s;
+}
+const SPR = { sugar: sprite(COL.sugar), nut: sprite(COL.nut), hypha: sprite('#efe6cf') };
+
+// ---------- trees ----------
+function soilD() { return H - G; }
+function treeH(t) { return Math.min(G - 14, G * .8 * t.size) * (0.16 + 0.84 * easeOut(t.grow)); }
+
+function genCrown(t) {
+  const s = t.sp; t.blobs = []; t.branches = [];
+  let cy, rx, ry, n, r0, r1;
+  if (s === 'oak') { cy = -.63; rx = .4; ry = .27; n = 30; r0 = .07; r1 = .12; t.trunkTop = -.5; }
+  else if (s === 'beech') { cy = -.66; rx = .32; ry = .3; n = 30; r0 = .06; r1 = .11; t.trunkTop = -.55; }
+  else if (s === 'birch') { cy = -.67; rx = .17; ry = .31; n = 36; r0 = .04; r1 = .075; t.trunkTop = -.8; }
+  else if (s === 'pine') { t.trunkTop = -.86; }
+  else { t.trunkTop = -.97; }
+  if (s === 'pine') {
+    const cl = [[-.13, -.8], [.12, -.84], [-.02, -.95], [.2, -.74], [-.2, -.72]];
+    for (const [cx0, cy0] of cl) {
+      for (let i = 0; i < 7; i++) {
+        const bx = cx0 + rand(-.07, .07), by = cy0 + rand(-.025, .025);
+        t.blobs.push({ x: bx, y: by, r: rand(.035, .06), sq: .55, shade: -(by + .85) * 4 + bx * -1.2 + rand(-.15, .15), ph: Math.random() * 6 });
+      }
+      t.branches.push({ y0: lerp(-.5, -.86, Math.random()), x1: cx0, y1: cy0 + .02, w: .012 });
+    }
+  } else if (s !== 'spruce') {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random());
+      let bx = Math.cos(a) * rx * rr, by = cy + Math.sin(a) * ry * rr;
+      if (s === 'birch') by += Math.abs(bx) * .4; // drooping
+      t.blobs.push({ x: bx, y: by, r: rand(r0, r1), sq: s === 'birch' ? .85 : .92, shade: -(by - cy) / ry * .5 - bx / rx * .25 + rand(-.12, .12), ph: Math.random() * 6 });
+    }
+    for (let i = 0; i < 7; i++) {
+      const bb = pick(t.blobs);
+      t.branches.push({ y0: lerp(t.trunkTop, t.trunkTop * .7, Math.random()), x1: bb.x * .9, y1: bb.y, w: s === 'birch' ? .006 : .014 });
+    }
+  }
+  t.blobs.sort((a, b) => a.shade - b.shade);
+  t.marks = [];
+  if (s === 'birch') for (let i = 0; i < 16; i++) t.marks.push({ y: Math.random() * -.8, w: rand(.3, .9), o: rand(-.5, .5) });
+}
+
+function genRoots(t) {
+  const D = soilD();
+  const deep = { oak: .82, beech: .6, birch: .58, pine: .78, spruce: .4 }[t.sp] * D * rand(.85, 1.05);
+  const spread = Math.min(270 * SZ, W * .24) * (t.sp === 'spruce' ? 1.25 : 1);
+  t.segs = []; t.tips = [];
+  const top = G + LIT * .6;
+  const grow = (x, y, a, w, d, lvl, steps, grav) => {
+    for (let s = 0; s < steps; s++) {
+      const L = rand(6, 11) * SZ;
+      a += rand(-.45, .45) + angDiff(Math.PI / 2, a) * grav;
+      let nx = x + Math.cos(a) * L, ny = y + Math.sin(a) * L;
+      if (ny < top + 3) { ny = top + 3; a = Math.abs(a); }
+      if (ny > G + deep) { ny = G + deep; a = a < Math.PI / 2 ? .1 : Math.PI - .1; }
+      if (Math.abs(nx - t.x) > spread) { a = Math.PI - a; nx = x; }
+      t.segs.push({ x1: x, y1: y, x2: nx, y2: ny, w, d0: d, d1: d + L });
+      if (lvl < 3 && Math.random() < (lvl === 0 ? .22 : .17) && w > .9) {
+        grow(nx, ny, a + (Math.random() < .5 ? -1 : 1) * rand(.6, 1.2), w * .62, d + L, lvl + 1, Math.round(rand(4, 11) - lvl), grav * .7);
+      }
+      if (lvl >= 1 && Math.random() < .2) {
+        // fine feeder rootlet: these tips are where fungi make contact
+        const fa = a + (Math.random() < .5 ? -1 : 1) * rand(.8, 1.5), fl = rand(5, 9) * SZ;
+        const fx = nx + Math.cos(fa) * fl, fy = clamp(ny + Math.sin(fa) * fl, top + 3, H - 6);
+        t.segs.push({ x1: nx, y1: ny, x2: fx, y2: fy, w: .55, d0: d + L, d1: d + L + fl });
+        t.tips.push({ x: fx, y: fy, a: fa, d: d + L + fl, tree: t, hosts: 0, sheath: 0, glow: 0 });
+      }
+      w *= .93; d += L; x = nx; y = ny;
+      if (w < .45) break;
+    }
+    t.tips.push({ x, y, a, d, tree: t, hosts: 0, sheath: 0, glow: 0 });
+  };
+  const base = 4.2 * SZ * (t.sp === 'oak' ? 1.25 : 1);
+  const n = Math.round(rand(4, 6));
+  for (let i = 0; i < n; i++) {
+    const side = i % 2 ? 1 : -1;
+    const lateral = i < 2 || (t.sp === 'spruce');
+    const a = lateral ? (side > 0 ? rand(.08, .35) : Math.PI - rand(.08, .35)) : Math.PI / 2 + side * rand(.1, .7);
+    grow(t.x + side * rand(0, 3), G + LIT * .8, a, base * rand(.75, 1), 0, 0, Math.round(rand(16, 26)), lateral ? .02 : .08);
+  }
+  if (t.sp === 'oak' || t.sp === 'pine') grow(t.x, G + LIT, Math.PI / 2, base * 1.1, 0, 0, 30, .25); // taproot
+  t.maxD = t.segs.reduce((m, s) => Math.max(m, s.d1), 1);
+}
+
+function plantTree(x, sp, mature) {
+  x = clamp(x, 24, W - 24);
+  const t = { id: ++treeId, sp, x, size: rand(.78, 1.08), born: T, grow: mature ? 1 : .03, rootGrow: mature ? 1 : 0, alive: true, dying: 0, seed: Math.random() * 100, glow: 0, fed: 0 };
+  genCrown(t); genRoots(t);
+  trees.push(t);
+  if (!mature) {
+    flashes.push({ x, y: G, t: 0, life: 1.2, kind: 'plant' });
+    // make sure some compatible fungus is close enough to find it
+    setTimeout(() => ensurePartner(t), 2500);
+  }
+  const maxT = Math.max(3, Math.min(9, Math.floor(W / 125)));
+  const living = trees.filter(q => q.alive);
+  if (living.length > maxT) living[0].alive = false;
+  refreshRootTips();
+  return t;
+}
+
+function ensurePartner(t) {
+  if (!t.alive) return;
+  const R = Math.min(W * .3, 340 * SZ);
+  const ok = colonies.some(c => c.alive && FUNGI[c.sp].hosts.includes(t.sp) && Math.abs(c.x - t.x) < R && colNodes(c) > 0);
+  if (!ok) {
+    const sps = Object.keys(FUNGI).filter(k => FUNGI[k].hosts.includes(t.sp));
+    seedColony(pick(sps), clamp(t.x + rand(80, 160) * SZ * (Math.random() < .5 ? -1 : 1), 30, W - 30), rand(G + LIT + 20, HUM + 30));
+  }
+}
+
+function refreshRootTips() {
+  rootTips = [];
+  for (const t of trees) {
+    if (!t.alive) continue;
+    const reach = t.rootGrow * t.maxD;
+    for (const r of t.tips) if (r.d <= reach) rootTips.push(r);
+  }
+}
+
+function killTree(t) {
+  trees.splice(trees.indexOf(t), 1);
+  for (const n of nodes.values()) if (n.contact === t.id) { n.contact = -1; n.rt = null; }
+  for (const tp of tips) if (tp.target && tp.target.tree === t) tp.target = null;
+  refreshRootTips();
+}
+
+// ---------- fungi ----------
+function seedColony(sp, x, y) {
+  if (colonies.filter(c => c.alive).length >= 6) return null;
+  const c = { id: colId++, sp, x, y, alive: true, born: T };
+  colonies.push(c);
+  const n = addNode(x, y, c.id);
+  const k = Math.round(rand(6, 8));
+  for (let i = 0; i < k; i++) tips.push(newTip(n, i / k * Math.PI * 2 + rand(-.3, .3), c.id, rand(50, 90)));
+  flashes.push({ x, y, t: 0, life: 1.6, kind: 'fuse' });
+  return c;
+}
+const colById = id => colonies.find(c => c.id === id);
+function colNodes(c) { let k = 0; for (const n of nodes.values()) if (n.col === c.id) { k++; if (k > 2) break; } return k; }
+function newTip(n, a, col, life) { return { n, a, col, life, age: 0, trail: [n.id], target: null, retarget: 0 }; }
+
+function findTarget(tp) {
+  const c = colById(tp.col); if (!c) return null;
+  const hosts = FUNGI[c.sp].hosts;
+  const R = 230 * SZ;
+  let best = null, bd = R * R;
+  for (const r of rootTips) {
+    if (!hosts.includes(r.tree.sp)) continue;
+    const dx = r.x - tp.n.x, dy = r.y - tp.n.y;
+    const d = dx * dx + dy * dy + r.hosts * r.hosts * 2500;
+    if (d < bd) { bd = d; best = r; }
+  }
+  return best;
+}
+
+const STEP = () => 5.2 * SZ;
+let growAcc = 0;
+function growthRate() {
+  const sIdx = Math.floor(season) % 4;
+  const sm = [1, 1, 1.1, .3][sIdx];
+  return 11 * sm * (.55 + moist * .9);
+}
+
+function stepTip(tp) {
+  const top = G + LIT * .7, bot = H - 6;
+  tp.age++;
+  if (tp.retarget-- <= 0 || (tp.target && !tp.target.tree.alive)) { tp.target = findTarget(tp); tp.retarget = 10 + (Math.random() * 10 | 0); }
+  if (tp.target) {
+    const want = Math.atan2(tp.target.y - tp.n.y, tp.target.x - tp.n.x);
+    tp.a += angDiff(want, tp.a) * .16;
+  }
+  tp.a += rand(-.24, .24);
+  const n = tp.n;
+  if (n.y < top + 10) tp.a += angDiff(Math.PI / 2, tp.a) * .35;
+  if (n.y > bot - 12) tp.a += angDiff(-Math.PI / 2, tp.a) * .35;
+  if (n.x < 10) tp.a += angDiff(0, tp.a) * .4;
+  if (n.x > W - 10) tp.a += angDiff(Math.PI, tp.a) * .4;
+  const L = STEP() * rand(.8, 1.2);
+  const nx = clamp(n.x + Math.cos(tp.a) * L, 2, W - 2), ny = clamp(n.y + Math.sin(tp.a) * L, top, bot);
+  // contact with a root tip: the mycorrhizal handshake
+  if (tp.target) {
+    const r = tp.target, dx = r.x - nx, dy = r.y - ny;
+    if (dx * dx + dy * dy < (L + 3) * (L + 3)) {
+      const m = addNode(r.x, r.y, tp.col); m.contact = r.tree.id; m.rt = r; r.hosts++;
+      link(n, m);
+      flashes.push({ x: r.x, y: r.y, t: 0, life: 1.4, kind: 'contact' });
+      r.glow = 1;
+      return false;
+    }
+  }
+  // anastomosis: fuse with a thread of the same colony
+  if (tp.age > 5) {
+    const tr = tp.trail;
+    const f = near(nx, ny, 6.5 * SZ, m => m.col === tp.col && m !== n && !n.adj.has(m.id) && tr.indexOf(m.id) < 0 && m.fade > .5 &&
+      (m.x - nx) * (m.x - nx) + (m.y - ny) * (m.y - ny) < 42 * SZ * SZ);
+    if (f && Math.random() < .8) {
+      link(n, f);
+      flashes.push({ x: f.x, y: f.y, t: 0, life: 1, kind: 'fuse' });
+      return false;
+    }
+  }
+  const m = addNode(nx, ny, tp.col);
+  link(n, m);
+  tp.n = m; tp.trail.push(m.id); if (tp.trail.length > 14) tp.trail.shift();
+  if (!tp.target) tp.life--; else tp.life -= .3;
+  if (nodes.size < CAP && tips.length < TIPCAP && Math.random() < .075) {
+    const b = newTip(m, tp.a + (Math.random() < .5 ? -1 : 1) * rand(.45, 1), tp.col, rand(40, 85));
+    b.trail = tp.trail.slice();
+    tips.push(b);
+  }
+  return tp.life > 0 && nodes.size < CAP * 1.05;
+}
+
+function growStep() {
+  const cur = tips; tips = [];
+  for (const tp of cur) if (nodes.has(tp.n.id) && stepTip(tp)) tips.push(tp);
+}
+
+// ---------- components, decay, renewal ----------
+let compStamp = 0;
+function updateComps() {
+  const tipSet = new Set(); for (const tp of tips) tipSet.add(tp.n.id);
+  const stamp = ++compStamp; compInfo = []; contactList = [];
+  let c = 0;
+  for (const n of nodes.values()) {
+    if (n.cs === stamp) continue;
+    const info = { contacts: new Set(), tip: false, size: 0, col: n.col, members: [] };
+    compInfo.push(info);
+    const st = [n]; n.cs = stamp; n.comp = c;
+    while (st.length) {
+      const m = st.pop(); info.size++; if (info.members.length < 400) info.members.push(m);
+      if (m.contact >= 0) { info.contacts.add(m.contact); contactList.push(m); }
+      if (tipSet.has(m.id)) info.tip = true;
+      for (const j of m.adj) { const k = nodes.get(j); if (k && k.cs !== stamp) { k.cs = stamp; k.comp = c; st.push(k); } }
+    }
+    c++;
+  }
+  return tipSet;
+}
+
+function maintain() {
+  const tipSet = updateComps();
+  const pressure = nodes.size / CAP;
+  const dead = [];
+  for (const n of nodes.values()) {
+    n.w *= .965;
+    const info = compInfo[n.comp];
+    if (info.contacts.size === 0 && !info.tip) {
+      n.fade -= .075; if (n.fade <= 0) { dead.push(n); continue; }
+    } else n.fade = Math.min(1, n.fade + .15);
+    if (n.contact < 0 && n.adj.size <= 1 && !tipSet.has(n.id) && T - n.born > 35 && n.w < .06) {
+      if (Math.random() < .035 + pressure * pressure * .35) dead.push(n);
+    }
+  }
+  for (const n of dead) removeNode(n);
+  // renewal: nourished colonies keep exploring, more when the soil is wet
+  for (const c of colonies) {
+    if (!c.alive) continue;
+    let mine = 0; for (const tp of tips) if (tp.col === c.id) mine++;
+    const nourished = compInfo.filter(i => i.col === c.id && i.contacts.size > 0);
+    const any = compInfo.some(i => i.col === c.id);
+    if (!any && !tips.some(t => t.col === c.id)) { c.alive = false; continue; }
+    const want = 4 + Math.round(moist * 8);
+    if (nourished.length && mine < want && nodes.size < CAP * .92 && tips.length < TIPCAP) {
+      const info = pick(nourished);
+      const n = pick(info.members);
+      if (n && n.adj.size <= 2) tips.push(newTip(n, rand(0, Math.PI * 2), c.id, rand(40, 80)));
+    }
+  }
+  for (let i = colonies.length - 1; i >= 0; i--) if (!colonies[i].alive && T - colonies[i].born > 5) colonies.splice(i, 1);
+  for (const r of rootTips) { if (r.hosts > 0) r.sheath = Math.min(1, r.sheath + .12); else r.sheath = Math.max(0, r.sheath - .05); }
+}
+
+// ---------- pulses ----------
+let bStamp = 0;
+function trace(n) { const p = []; let m = n; while (m) { p.push(m.id); m = m.bp ? nodes.get(m.bp) : null; } return p.reverse(); }
+function bfs(start, depth, goal, maxVisit = 2600) {
+  const s = ++bStamp; start.bv = s; start.bp = 0; start.bd = 0;
+  const q = [start]; let qi = 0; let ring = [];
+  while (qi < q.length && qi < maxVisit) {
+    const n = q[qi++];
+    if (goal) { if (n !== start && goal(n)) return trace(n); }
+    else if (n.bd === depth) ring.push(n);
+    else if (n.bd > depth) break;
+    for (const j of n.adj) { const m = nodes.get(j); if (m && m.bv !== s && m.fade > .3) { m.bv = s; m.bp = n.id; m.bd = n.bd + 1; q.push(m); } }
+  }
+  if (goal) return null;
+  if (!ring.length) ring = [q[q.length - 1]];
+  return trace(pick(ring));
+}
+
+let pulseAcc = 0;
+function flowFor(t) {
+  const sIdx = Math.floor(season) % 4;
+  if (TREE_SP[t.sp].dec) return [.55, 1, .7, .08][sIdx];
+  return [.8, 1, .8, .45][sIdx];
+}
+function spawnPulse() {
+  if (!contactList.length || pulses.length > 150) return;
+  const c = pick(contactList);
+  if (!nodes.has(c.id)) return;
+  const t = trees.find(q => q.id === c.contact); if (!t || !t.alive) return;
+  const r = Math.random();
+  if (r < .16) {
+    // tree to tree: carbon passed through the shared fungus
+    const p = bfs(c, 0, n => n.contact >= 0 && n.contact !== t.id);
+    if (p && p.length > 2) { pulses.push({ path: p, pos: 0, speed: rand(16, 22), kind: 'share', from: t.id, to: nodes.get(p[p.length - 1]).contact }); return; }
+  }
+  if (r < .58 && Math.random() < flowFor(t)) {
+    const fruit = mushrooms.filter(m => m.node && nodes.has(m.node.id) && m.node.comp === c.comp && m.age < m.life - 10);
+    if (fruit.length && Math.random() < .45) {
+      const goal = pick(fruit).node;
+      const p = bfs(c, 0, n => n === goal);
+      if (p && p.length > 2) { pulses.push({ path: p, pos: 0, speed: rand(18, 26), kind: 'sugar', from: t.id, fruit: true }); return; }
+    }
+    const p = bfs(c, Math.round(rand(12, 70)));
+    if (p.length > 3) pulses.push({ path: p, pos: 0, speed: rand(15, 24), kind: 'sugar', from: t.id });
+  } else {
+    const p = bfs(c, Math.round(rand(12, 70)));
+    if (p.length > 3) pulses.push({ path: p.reverse(), pos: 0, speed: rand(13, 20), kind: 'nut', to: t.id });
+  }
+}
+
+function updatePulses(dt) {
+  for (let i = pulses.length - 1; i >= 0; i--) {
+    const p = pulses[i];
+    const k0 = Math.floor(p.pos);
+    p.pos += p.speed * dt;
+    const k = Math.floor(p.pos);
+    if (k >= p.path.length - 1) {
+      const end = nodes.get(p.path[p.path.length - 1]);
+      if (end) arrive(p, end);
+      pulses.splice(i, 1); continue;
+    }
+    const a = nodes.get(p.path[k]);
+    if (!a || !a.adj.has(p.path[k + 1])) {
+      if (a) sparks.push({ x: a.x, y: a.y, vx: rand(-20, 20), vy: rand(-20, 20), life: .5, t: 0, c: p.kind === 'nut' ? COL.nut : COL.sugar });
+      pulses.splice(i, 1); continue;
+    }
+    if (k !== k0) a.w = Math.min(1.6, a.w + .05);
+  }
+}
+
+function arrive(p, end) {
+  if (p.kind === 'nut' || p.kind === 'share') {
+    const t = trees.find(q => q.id === (p.kind === 'nut' ? p.to : p.to));
+    if (end.rt) end.rt.glow = 1;
+    if (t) { t.glow = Math.min(1, t.glow + .25); if (p.kind === 'share' && t.grow < 1) t.fed += .02; }
+    flashes.push({ x: end.x, y: end.y, t: 0, life: .7, kind: p.kind === 'nut' ? 'nut' : 'sugar' });
+    onArrive && onArrive(p.kind);
+  } else {
+    flashes.push({ x: end.x, y: end.y, t: 0, life: .6, kind: 'sugar' });
+    onArrive && onArrive('sugar');
+  }
+}
+let onArrive = null;
+
+// ---------- cutting ----------
+const cutTrail = [];
+const regrow = [];
+function cut(x0, y0, x1, y1) {
+  cutTrail.push({ x: x1, y: y1, t: T });
+  const pad = 2;
+  const minx = Math.min(x0, x1) - pad, maxx = Math.max(x0, x1) + pad, miny = Math.min(y0, y1) - pad, maxy = Math.max(y0, y1) + pad;
+  const cx0 = ((minx - 12) / CELL) | 0, cx1 = ((maxx + 12) / CELL) | 0, cy0 = ((miny - 12) / CELL) | 0, cy1 = ((maxy + 12) / CELL) | 0;
+  let severed = 0;
+  for (let i = cx0; i <= cx1; i++) for (let j = cy0; j <= cy1; j++) {
+    const arr = grid.get(i * 8192 + j); if (!arr) continue;
+    for (const a of arr.slice()) {
+      for (const id of Array.from(a.adj)) {
+        const b = nodes.get(id); if (!b) continue;
+        const t = segX(a.x, a.y, b.x, b.y, x0, y0, x1, y1);
+        if (t !== null) {
+          unlink(a, b); severed++;
+          const sx = lerp(a.x, b.x, t), sy = lerp(a.y, b.y, t);
+          for (let s = 0; s < 3; s++) sparks.push({ x: sx, y: sy, vx: rand(-40, 40), vy: rand(-50, 20), life: rand(.4, .8), t: 0, c: COL.hypha });
+          regrow.push({ n: a, at: T + rand(1.5, 4) }, { n: b, at: T + rand(1.5, 4) });
+        }
+      }
+    }
+  }
+  if (severed && onCut) onCut(severed);
+}
+let onCut = null;
+function updateRegrow() {
+  for (let i = regrow.length - 1; i >= 0; i--) {
+    const r = regrow[i];
+    if (T < r.at) continue;
+    regrow.splice(i, 1);
+    const n = r.n; if (!nodes.has(n.id)) continue;
+    const info = compInfo[n.comp];
+    if (info && info.contacts.size > 0 && tips.length < TIPCAP + 10 && Math.random() < .7) tips.push(newTip(n, rand(0, Math.PI * 2), n.col, rand(20, 40)));
+  }
+  if (regrow.length > 200) regrow.splice(0, regrow.length - 200);
+}
+
+// ---------- seasons (fixed in v1) ----------
+const SEASON_LEN = 70;
+function leafState(S) {
+  const i = Math.floor(season) % 4, f = season - Math.floor(season);
+  if (!S.dec) return { c: i === 3 ? mixRGB(S.everC, [70, 80, 78], .25) : S.everC, d: 1 };
+  if (i === 0) return { c: mixRGB(S.springC, S.summerC, smooth(.3, 1, f)), d: .08 + .92 * smooth(0, .55, f) };
+  if (i === 1) return { c: mixRGB(S.summerC, S.autumnC, smooth(.8, 1, f) * .2), d: 1 };
+  if (i === 2) return { c: mixRGB(S.summerC, S.autumnC, smooth(0, .35, f)), d: Math.max(S.winterKeep, 1 - smooth(.3, .95, f)) };
+  // winter: bare, except marcescent oak and beech keep a few dry leaves
+  return { c: mixRGB(S.autumnC, [120, 84, 50], .6), d: Math.max(S.winterKeep, .06 * smooth(.85, 1, f)) };
+}
+
+// ---------- drawing ----------
+const SKY_TOP = [[30, 40, 46], [28, 38, 46], [34, 36, 42], [36, 44, 54]];
+const SKY_HOR = [[92, 106, 96], [98, 108, 104], [108, 96, 82], [116, 124, 134]];
+function drawSky() {
+  const i = Math.floor(season) % 4, f = smooth(.65, 1, season - Math.floor(season)), j = (i + 1) % 4;
+  const dark = precip.I * .55;
+  const top = mixRGB(mixRGB(SKY_TOP[i], SKY_TOP[j], f), [26, 30, 34], dark);
+  const hor = mixRGB(mixRGB(SKY_HOR[i], SKY_HOR[j], f), [58, 64, 70], dark);
+  const g = ctx.createLinearGradient(0, 0, 0, G);
+  g.addColorStop(0, rgb(top)); g.addColorStop(.72, rgb(mixRGB(top, hor, .75))); g.addColorStop(1, rgb(hor));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, G + 2);
+}
+
+function drawRoots() {
+  ctx.lineCap = 'round';
+  for (const t of trees) {
+    const reach = t.rootGrow * t.maxD;
+    const alpha = 1 - t.dying;
+    const buckets = new Map();
+    for (const s of t.segs) {
+      if (s.d0 > reach) continue;
+      const f = s.d1 <= reach ? 1 : (reach - s.d0) / (s.d1 - s.d0);
+      const w = Math.max(.6, Math.round(s.w * 2) / 2);
+      let p = buckets.get(w); if (!p) buckets.set(w, p = new Path2D());
+      p.moveTo(s.x1, s.y1); p.lineTo(lerp(s.x1, s.x2, f), lerp(s.y1, s.y2, f));
+    }
+    for (const [w, p] of buckets) {
+      const k = clamp(w / 5, 0, 1);
+      ctx.strokeStyle = rgba(mixRGB([132, 98, 66], [92, 64, 42], k), .78 * alpha);
+      ctx.lineWidth = w; ctx.stroke(p);
+      if (w >= 2) { ctx.strokeStyle = rgba([170, 132, 94], .18 * alpha); ctx.lineWidth = w * .35; ctx.stroke(p); }
+    }
+    // mycorrhizal sheaths on colonised root tips
+    for (const r of t.tips) {
+      if (r.sheath <= 0 || r.d > reach) continue;
+      ctx.save(); ctx.translate(r.x, r.y); ctx.rotate(r.a);
+      ctx.fillStyle = rgba([236, 228, 206], .75 * r.sheath * alpha);
+      ctx.beginPath(); ctx.ellipse(-1, 0, 4.2 * SZ, 2.1 * SZ, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      if (r.glow > .02) {
+        ctx.globalCompositeOperation = 'lighter';
+        const s = 26 * SZ * r.glow; ctx.globalAlpha = r.glow * .9;
+        ctx.drawImage(SPR.nut, r.x - s / 2, r.y - s / 2, s, s);
+        ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+      }
+    }
+  }
+}
+
+function drawHyphae() {
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const paths = new Map();
+  const P = key => { let p = paths.get(key); if (!p) paths.set(key, p = new Path2D()); return p; };
+  for (const n of nodes.values()) {
+    for (const j of n.adj) {
+      if (j < n.id) continue;
+      const m = nodes.get(j); if (!m) continue;
+      const f = Math.min(n.fade, m.fade);
+      const w = (n.w + m.w) * .5;
+      const lvl = f < .98 ? 3 : w < .12 ? 0 : w < .45 ? 1 : 2;
+      const p = P(n.col * 4 + lvl);
+      p.moveTo(n.x, n.y); p.lineTo(m.x, m.y);
+    }
+  }
+  for (const [key, p] of paths) {
+    const col = colById(Math.floor(key / 4)); const lvl = key % 4;
+    const c = col ? FUNGI[col.sp].tintC : [236, 229, 211];
+    if (lvl === 3) { ctx.strokeStyle = rgba([150, 140, 125], .22); ctx.lineWidth = .7; ctx.stroke(p); continue; }
+    if (lvl === 2) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = rgba([255, 190, 110], .1); ctx.lineWidth = 6 * SZ; ctx.stroke(p);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = rgba(c, .045); ctx.lineWidth = 3.5 * SZ; ctx.stroke(p);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = rgba(lvl === 2 ? mixRGB(c, [255, 222, 170], .25) : c, [.5, .7, .92][lvl]);
+    ctx.lineWidth = [.8, 1.35, 2.3][lvl] * Math.max(.8, SZ);
+    ctx.stroke(p);
+  }
+  // growing tips (the Spitzenkörper): little bright points
+  ctx.globalCompositeOperation = 'lighter';
+  const s = 9 * SZ;
+  for (const tp of tips) ctx.drawImage(SPR.hypha, tp.n.x - s / 2, tp.n.y - s / 2, s, s);
+  // contacts glow softly
+  for (const n of contactList) { const z = 16 * SZ; ctx.globalAlpha = .35; ctx.drawImage(SPR.sugar, n.x - z / 2, n.y - z / 2, z, z); }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function drawPulses() {
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of pulses) {
+    const spr = p.kind === 'nut' ? SPR.nut : SPR.sugar;
+    for (let k = 0; k < 4; k++) {
+      const pos = p.pos - k * .55; if (pos < 0) break;
+      const i = Math.floor(pos), f = pos - i;
+      const a = nodes.get(p.path[i]), b = nodes.get(p.path[Math.min(i + 1, p.path.length - 1)]);
+      if (!a || !b) break;
+      const x = lerp(a.x, b.x, f), y = lerp(a.y, b.y, f);
+      const s = (p.kind === 'share' ? 22 : 17) * SZ * (1 - k * .2);
+      ctx.globalAlpha = 1 - k * .24;
+      ctx.drawImage(spr, x - s / 2, y - s / 2, s, s);
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function drawFlashes(dt) {
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = flashes.length - 1; i >= 0; i--) {
+    const f = flashes[i]; f.t += dt;
+    const k = f.t / f.life; if (k >= 1) { flashes.splice(i, 1); continue; }
+    if (f.kind === 'fuse' || f.kind === 'plant') {
+      ctx.strokeStyle = rgba(f.kind === 'plant' ? [255, 220, 160] : [240, 232, 210], (1 - k) * .6);
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(f.x, f.y, (3 + k * (f.kind === 'plant' ? 40 : 12)) * SZ, 0, Math.PI * 2); ctx.stroke();
+    } else {
+      const spr = f.kind === 'nut' ? SPR.nut : SPR.sugar;
+      const s = (f.kind === 'contact' ? 46 : 24) * SZ * (0.6 + k * .6);
+      ctx.globalAlpha = (1 - k) * (f.kind === 'contact' ? 1 : .7);
+      ctx.drawImage(spr, f.x - s / 2, f.y - s / 2, s, s);
+      ctx.globalAlpha = 1;
+    }
+  }
+  for (let i = sparks.length - 1; i >= 0; i--) {
+    const s = sparks[i]; s.t += dt; if (s.t > s.life) { sparks.splice(i, 1); continue; }
+    s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 60 * dt;
+    ctx.fillStyle = s.c; ctx.globalAlpha = 1 - s.t / s.life;
+    ctx.fillRect(s.x - .8, s.y - .8, 1.6, 1.6);
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function drawTree(t) {
+  const S = TREE_SP[t.sp], h = treeH(t), x = t.x, alpha = 1 - t.dying;
+  if (alpha <= 0) return;
+  ctx.save(); ctx.globalAlpha = alpha;
+  const sway = RM ? 0 : Math.sin(T * .6 + t.seed) * wind * h * .012;
+  const tw = Math.max(1.5, h * S.trunk);
+  const topY = G + h * t.trunkTop;
+  // trunk
+  const tg = ctx.createLinearGradient(x - tw, 0, x + tw, 0);
+  const bc = hexRGB(S.bark);
+  tg.addColorStop(0, rgb(bc, 1.12)); tg.addColorStop(.6, rgb(bc, .9)); tg.addColorStop(1, rgb(bc, .55));
+  ctx.fillStyle = tg;
+  ctx.beginPath();
+  ctx.moveTo(x - tw * .95, G + 2);
+  ctx.quadraticCurveTo(x - tw * .5, G - h * .05, x - tw * .45, G - h * .1);
+  ctx.lineTo(x - tw * .22 + sway * .5, topY);
+  ctx.lineTo(x + tw * .22 + sway * .5, topY);
+  ctx.lineTo(x + tw * .45, G - h * .1);
+  ctx.quadraticCurveTo(x + tw * .5, G - h * .05, x + tw * .95, G + 2);
+  ctx.closePath(); ctx.fill();
+  if (t.sp === 'birch') {
+    ctx.fillStyle = 'rgba(30,26,24,.75)';
+    for (const m of t.marks) { const yy = G + m.y * h; if (yy < topY) continue; const ww = tw * .5 * (1 - (G - yy) / h * .5); ctx.fillRect(x + m.o * ww * .5 - ww * m.w * .5, yy, ww * m.w, Math.max(1, h * .006)); }
+    ctx.fillStyle = 'rgba(40,32,28,.6)'; ctx.fillRect(x - tw * .6, G - h * .08, tw * 1.2, h * .08);
+  }
+  // branches
+  ctx.strokeStyle = rgb(bc, .7); ctx.lineCap = 'round';
+  for (const b of t.branches) {
+    ctx.lineWidth = Math.max(.6, b.w * h);
+    ctx.beginPath(); ctx.moveTo(x + sway * .4, G + b.y0 * h);
+    ctx.quadraticCurveTo(x + b.x1 * h * .4 + sway, G + (b.y0 + b.y1) * .5 * h, x + b.x1 * h + sway, G + b.y1 * h);
+    ctx.stroke();
+  }
+  // crown
+  const L = leafState(S);
+  const glow = t.glow;
+  if (t.sp === 'spruce') {
+    const n = 12;
+    for (let i = 0; i < n; i++) {
+      const f = i / n, y = G - h * (.12 + f * .86), hw = h * (.27 * Math.pow(1 - f, .9) + .02), sx = sway * (f + .2);
+      ctx.fillStyle = rgb(L.c, .78 + f * .35 + glow * .1);
+      ctx.beginPath(); ctx.moveTo(x - hw + sx, y + h * .035);
+      ctx.quadraticCurveTo(x - hw * .3 + sx, y - h * .02, x + sx, y - h * .1);
+      ctx.quadraticCurveTo(x + hw * .3 + sx, y - h * .02, x + hw + sx, y + h * .035);
+      ctx.quadraticCurveTo(x + sx, y + h * .01, x - hw + sx, y + h * .035);
+      ctx.fill();
+    }
+  } else if (L.d > .01) {
+    for (const b of t.blobs) {
+      const bx = x + b.x * h + sway * (-b.y) + (RM ? 0 : Math.sin(T * 1.3 + b.ph) * wind * .6);
+      const by = G + b.y * h;
+      const r = b.r * h * Math.sqrt(L.d);
+      ctx.globalAlpha = alpha * Math.min(1, L.d * 1.6);
+      ctx.fillStyle = rgb(L.c, .74 + b.shade * .35 + glow * .08);
+      ctx.beginPath(); ctx.ellipse(bx, by, r, r * b.sq, 0, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+function drawSurface() {
+  // litter edge on the surface line
+  ctx.fillStyle = '#4a3522';
+  ctx.beginPath(); ctx.moveTo(0, G + 3);
+  for (let x = 0; x <= W + 6; x += 6) ctx.lineTo(x, G - 1.5 - Math.abs(Math.sin(x * .07) * Math.sin(x * .023)) * 3);
+  ctx.lineTo(W, G + 3); ctx.closePath(); ctx.fill();
+}
+
+function drawCutTrail() {
+  for (let i = cutTrail.length - 1; i >= 0; i--) if (T - cutTrail[i].t > .5) cutTrail.splice(0, i + 1), i = -1;
+  if (cutTrail.length < 2) return;
+  ctx.lineCap = 'round';
+  for (let i = 1; i < cutTrail.length; i++) {
+    const a = cutTrail[i - 1], b = cutTrail[i];
+    ctx.strokeStyle = rgba([255, 244, 220], .7 * (1 - (T - b.t) / .5));
+    ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+}
+
+function draw(dt) {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  drawSky();
+  ctx.drawImage(bg, 0, 0, W, H);
+  drawSoak();
+  drawRoots();
+  drawHyphae();
+  drawCords();
+  drawPulses();
+  drawFlashes(dt);
+  drawPerc();
+  for (const t of trees) drawTree(t);
+  drawSurface();
+  drawLitter();
+  for (const m of mushrooms) drawMushroom(m);
+  drawLeaves();
+  drawSpores();
+  drawPrecip();
+  drawCutTrail();
+  ctx.drawImage(vig, 0, 0, W, H);
+}
+
+// ---------- simulation ----------
+let maintAcc = 0, rootAcc = 0;
+function sim(dt) {
+  T += dt;
+  // trees
+  for (let i = trees.length - 1; i >= 0; i--) {
+    const t = trees[i];
+    if (!t.alive) { t.dying += dt / 9; if (t.dying >= 1) { killTree(t); continue; } }
+    t.grow = Math.min(1, t.grow + dt / 32 * (1 + t.fed * 6));
+    t.rootGrow = Math.min(1, t.rootGrow + dt / 26);
+    t.glow *= Math.pow(.25, dt);
+    for (const r of t.tips) r.glow *= Math.pow(.2, dt);
+  }
+  rootAcc += dt; if (rootAcc > .5) { rootAcc = 0; refreshRootTips(); }
+  // growth
+  growAcc += dt * growthRate();
+  let steps = 0;
+  while (growAcc >= 1 && steps < 4) { growAcc -= 1; growStep(); steps++; }
+  if (growAcc > 4) growAcc = 0;
+  maintAcc += dt;
+  if (maintAcc > .8) { maintAcc = 0; maintain(); updateRegrow(); }
+  // trade
+  let rate = 0;
+  const byId = new Map(); for (const t of trees) byId.set(t.id, t);
+  for (const c of contactList) { const t = byId.get(c.contact); if (t) rate += .32 * (.3 + flowFor(t)); }
+  pulseAcc += dt * Math.min(rate, 9);
+  while (pulseAcc >= 1) { pulseAcc -= 1; spawnPulse(); }
+  updatePulses(dt);
+  updateWeather(dt);
+  updateLife(dt);
+  autopilot();
+}
+
+function freeX() {
+  let best = W / 2, bd = -1;
+  for (let i = 0; i < 14; i++) {
+    const x = rand(W * .07, W * .93);
+    let d = 1e9; for (const t of trees) if (t.alive) d = Math.min(d, Math.abs(t.x - x));
+    if (d > bd) { bd = d; best = x; }
+  }
+  return best;
+}
+
+function autopilot() {
+  const idle = WALL() || T - lastInput > 22;
+  if (!idle || T < nextAuto) return;
+  nextAuto = T + rand(10, 22);
+  const living = trees.filter(t => t.alive);
+  const target = Math.max(3, Math.min(7, Math.floor(W / 170)));
+  if (living.length < target) plantTree(freeX(), pick(Object.keys(TREE_SP)), false);
+  else if (T - living[0].born > 200 && Math.random() < .3) { living[0].alive = false; }
+  if (colonies.filter(c => c.alive).length < 2) {
+    const t = pick(living); if (t) ensurePartner(t);
+  }
+}
+
+// ---------- weather ----------
+const precip = { on: false, kind: 'rain', I: 0, end: 0, next: 24 };
+const drops = [], splashes = [], perc = [], leaves = [], litter = [], spores = [];
+const mushrooms = [];
+let snow = 0, soak = .4, fruitQueue = [];
+let onOpen = null, onSpore = null;
+
+function startPrecip(dur) {
+  const winter = Math.floor(season) % 4 === 3;
+  if (precip.on) { precip.end = Math.max(precip.end, T + 10); return; }
+  precip.on = true; precip.kind = winter ? 'snow' : 'rain'; precip.end = T + (dur || rand(14, 26));
+}
+
+function scheduleFruiting() {
+  const i = Math.floor(season) % 4;
+  if (i === 3) return;
+  const n = i === 2 ? Math.round(rand(3, 6)) : i === 1 ? Math.round(rand(1, 3)) : Math.round(rand(0, 2));
+  let at = T + rand(3, 7);
+  for (let k = 0; k < n; k++) { fruitQueue.push(at); at += rand(2, 6); }
+}
+
+function updateWeather(dt) {
+  season = (season + dt / SEASON_LEN) % 4;
+  if (!precip.on && T > precip.next) startPrecip();
+  if (precip.on && T > precip.end) {
+    precip.on = false; precip.next = T + rand(40, 85);
+    if (precip.kind === 'rain') scheduleFruiting();
+  }
+  precip.I = lerp(precip.I, precip.on ? 1 : 0, 1 - Math.pow(.5, dt / 1.6));
+  if (precip.kind === 'rain') moist = Math.min(1, moist + precip.I * dt * .055);
+  moist = Math.max(.12, moist - dt * .0045);
+  soak = lerp(soak, moist, 1 - Math.pow(.5, dt / 4));
+  const winter = Math.floor(season) % 4 === 3;
+  if (precip.kind === 'snow' && precip.I > .1) snow = Math.min(1, snow + dt * .035 * precip.I);
+  else snow = Math.max(0, snow - dt * (winter ? .002 : .025));
+  wind = .45 + precip.I * .8 + Math.sin(T * .05) * .2;
+
+  // falling rain and snow
+  const snowy = precip.kind === 'snow';
+  const rate = precip.I * (RM ? 50 : snowy ? 90 : 230) * (W / 1200);
+  let n = rate * dt + Math.random();
+  while (n-- > 1 && drops.length < (RM ? 120 : 420)) {
+    drops.push(snowy
+      ? { x: rand(-40, W + 40), y: rand(-20, -2), vx: 0, vy: rand(26, 50), s: rand(1, 2.4), ph: Math.random() * 6, snow: true }
+      : { x: rand(-40, W + 40), y: rand(-40, -2), vx: wind * 55, vy: rand(620, 860), s: rand(.6, 1.1) });
+  }
+  for (let i = drops.length - 1; i >= 0; i--) {
+    const d = drops[i];
+    if (d.snow) d.x += (Math.sin(T * 1.4 + d.ph) * 18 + wind * 16) * dt; else d.x += d.vx * dt;
+    d.y += d.vy * dt;
+    if (d.y >= G - 1) {
+      drops.splice(i, 1);
+      if (!d.snow) {
+        if (splashes.length < 160 && Math.random() < .6) splashes.push({ x: d.x, y: G - 1, t: 0 });
+        if (perc.length < 180 && Math.random() < .25) perc.push({ x: d.x, y: G + LIT * .5, vy: rand(14, 30), life: rand(3, 7), t: 0 });
+      }
+    }
+  }
+  for (let i = splashes.length - 1; i >= 0; i--) { splashes[i].t += dt; if (splashes[i].t > .28) splashes.splice(i, 1); }
+  const front = G + LIT + soak * (H - G) * .8;
+  for (let i = perc.length - 1; i >= 0; i--) {
+    const p = perc[i]; p.t += dt; p.y += p.vy * dt; p.x += Math.sin(p.y * .15) * .2;
+    if (p.t > p.life || p.y > front) perc.splice(i, 1);
+  }
+}
+
+// ---------- leaves, litter, mushrooms, spores ----------
+const LITTER_DARK = [56, 39, 25];
+function seedLitter() {
+  for (let i = 0; i < Math.min(240, W / 5); i++) litter.push(newLitter(rand(0, W), pick([[120, 82, 44], [98, 66, 36], [140, 100, 52], [84, 60, 38], [150, 112, 60]]), rand(10, 160)));
+}
+function newLitter(x, c, age) {
+  return { x, y: G - rand(-.5, 3), rx: rand(2.2, 4.2) * SZ, ry: rand(.8, 1.4) * SZ, rot: rand(-.35, .35), c, age: age || 0 };
+}
+
+function updateLife(dt) {
+  const i = Math.floor(season) % 4, f = season - Math.floor(season);
+  // autumn leaf fall from deciduous crowns
+  if (i === 2 && f > .2 && !RM) {
+    for (const t of trees) {
+      const S = TREE_SP[t.sp]; if (!S.dec || !t.alive) continue;
+      const L = leafState(S);
+      if (L.d < .05 || Math.random() > dt * 2.2 * L.d * (.6 + wind * .5)) continue;
+      const b = pick(t.blobs), h = treeH(t);
+      if (leaves.length < 140) leaves.push({ x: t.x + b.x * h + rand(-6, 6), y: G + b.y * h, vx: rand(-8, 8), vy: rand(10, 20), rot: rand(0, 6), vr: rand(-3, 3), c: mixRGB(L.c, [255, 255, 255], rand(-.1, .1)), s: rand(2.4, 3.6) * SZ, ph: Math.random() * 6 });
+    }
+  }
+  for (let k = leaves.length - 1; k >= 0; k--) {
+    const l = leaves[k];
+    l.vx += ((wind * 22) - l.vx) * dt * .6;
+    l.x += (l.vx + Math.sin(T * 2.1 + l.ph) * 22) * dt; l.y += l.vy * dt; l.rot += l.vr * dt;
+    if (l.y >= G - 1.5) { leaves.splice(k, 1); litter.push(newLitter(l.x, l.c, 0)); }
+  }
+  for (const p of litter) p.age += dt;
+  const capL = Math.min(320, W / 4);
+  if (litter.length > capL) litter.splice(0, litter.length - capL);
+
+  // mushrooms
+  while (fruitQueue.length && T > fruitQueue[0]) { fruitQueue.shift(); spawnMushroom(0); }
+  for (let k = mushrooms.length - 1; k >= 0; k--) {
+    const m = mushrooms[k];
+    m.age += dt;
+    if (m.age > m.life) { mushrooms.splice(k, 1); continue; }
+    const G2 = mushGeom(m);
+    if (!m.opened && G2.o > .5) { m.opened = true; if (onOpen) onOpen(m); }
+    if (G2.o > .85 && G2.decay < .6 && spores.length < (RM ? 120 : 380)) {
+      let e = dt * (RM ? 2 : 7) * MUSH[m.sp].cap / 14 + Math.random() * .0;
+      while (e > 0) {
+        if (Math.random() < e) spores.push({ x: G2.tx + rand(-G2.rx * .8, G2.rx * .8), y: G2.ty + G2.ry * .3 + 1, vx: rand(-3, 3), vy: rand(3, 9), life: rand(5, 10), t: 0, ph: Math.random() * 6, c: FUNGI[m.sp].spore, sp: m.sp });
+        e -= 1;
+      }
+    }
+  }
+  for (let k = spores.length - 1; k >= 0; k--) {
+    const s = spores[k]; s.t += dt;
+    s.vx += (wind * 12 - s.vx) * dt * .4;
+    s.vy += ((4 + Math.sin(T * 1.3 + s.ph) * 7) - s.vy) * dt * .8;
+    s.x += s.vx * dt; s.y += s.vy * dt;
+    if (s.t > s.life || s.y > G || s.x < -10 || s.x > W + 10) {
+      // rarely, a spore lands and starts a new mycelium
+      if (s.y > G && Math.random() < .002 && colonies.filter(c => c.alive).length < 5 && nodes.size < CAP * .8) seedColony(s.sp, clamp(s.x, 20, W - 20), rand(G + LIT + 10, HUM + 20));
+      spores.splice(k, 1);
+    }
+  }
+}
+
+const MUSH = {
+  amanita: { cap: 20, stem: 46, sw: 7 },
+  chanterelle: { cap: 11, stem: 18, sw: 6 },
+  porcini: { cap: 18, stem: 27, sw: 12 },
+  laccaria: { cap: 8.5, stem: 26, sw: 3 },
+  suillus: { cap: 14, stem: 22, sw: 6.5 },
+};
+
+function spawnMushroom(age) {
+  if (mushrooms.length >= 14 || Math.floor(season) % 4 === 3 && !age) return;
+  const fed = compInfo.filter(i => i.contacts.size > 0 && i.size > 30);
+  if (!fed.length) return;
+  const info = pick(fed); const c = colById(info.col); if (!c) return;
+  let best = null;
+  for (let k = 0; k < 40; k++) { const n = pick(info.members); if (n && (!best || n.y < best.y)) best = n; }
+  if (!best || best.y > G + LIT + (HUM - G) * .55) return;
+  let x = best.x + rand(-8, 8);
+  for (let tries = 0; tries < 6; tries++) {
+    const bad = mushrooms.some(m => Math.abs(m.x - x) < 18 * SZ) || trees.some(t => Math.abs(t.x - x) < treeH(t) * TREE_SP[t.sp].trunk + 12);
+    if (!bad) break;
+    x = best.x + rand(-45, 45) * SZ;
+  }
+  x = clamp(x, 14, W - 14);
+  const m = { sp: c.sp, x, node: best, age: age || 0, life: rand(58, 78), size: rand(.8, 1.16), lean: rand(-.07, .07), warts: [], seed: Math.random(), opened: (age || 0) > 10 };
+  if (c.sp === 'amanita') for (let i = 0; i < 16; i++) m.warts.push({ u: rand(-.82, .82), v: rand(.2, .92), s: rand(.6, 1.25) });
+  mushrooms.push(m);
+}
+
+function mushGeom(m) {
+  const P = MUSH[m.sp], s = m.size * SZ * 1.3;
+  const g = clamp(m.age / 16, 0, 1);
+  const decay = clamp((m.age - (m.life - 14)) / 14, 0, 1);
+  const e = easeOut(g);
+  const o = smooth(.45, 1, g) * (1 - decay * .15);
+  const sh = P.stem * s * (.1 + .9 * e) * (1 - decay * .3);
+  const r = P.cap * s * (.42 + .58 * smooth(.1, 1, g));
+  const sw = P.sw * s * (.62 + .38 * e);
+  const lean = m.lean * (1 + decay * 4) + (RM ? 0 : Math.sin(T * .8 + m.seed * 9) * wind * .012);
+  const bx = m.x, by = G + 1.5;
+  const tx = bx + lean * sh, ty = by - sh;
+  const rim = (1 - o) * r * .55, rx = r * (.8 + .2 * o), ry = r * .22 * o;
+  return { g, decay, o, sh, r, sw, bx, by, tx, ty, rim, rx, ry };
+}
+
+function mushAt(x, y) {
+  for (let i = mushrooms.length - 1; i >= 0; i--) {
+    const m = mushrooms[i], q = mushGeom(m);
+    const pad = 6;
+    if (x > q.tx - q.r - pad && x < q.tx + q.r + pad && y > q.ty - q.r * 1.3 - pad && y < q.by + pad) return m;
+  }
+  return null;
+}
+function mushHTML(m) {
+  const F = FUNGI[m.sp];
+  const hosts = F.hosts.map(h => TREE_SP[h].name.split(' ').pop()).filter((v, i, a) => a.indexOf(v) === i);
+  return `<i>${F.latin}</i><b>${F.common}</b>${F.note} Grows with ${hosts.join(', ')}.`;
+}
+
+function stemPath(bx, by, tx, ty, wb, wt) {
+  ctx.beginPath();
+  ctx.moveTo(bx - wb / 2, by);
+  ctx.quadraticCurveTo((bx + tx) / 2 - (wb + wt) / 4 - .5, (by + ty) / 2, tx - wt / 2, ty);
+  ctx.lineTo(tx + wt / 2, ty);
+  ctx.quadraticCurveTo((bx + tx) / 2 + (wb + wt) / 4 + .5, (by + ty) / 2, bx + wb / 2, by);
+  ctx.closePath();
+}
+function fillStem(q, wb, wt, c, ty2) {
+  const ty = ty2 === undefined ? q.ty : ty2;
+  const g = ctx.createLinearGradient(q.bx - wb / 2, 0, q.bx + wb / 2, 0);
+  g.addColorStop(0, rgb(c, 1.05)); g.addColorStop(.55, rgb(c, .92)); g.addColorStop(1, rgb(c, .62));
+  ctx.fillStyle = g; stemPath(q.bx, q.by, q.tx, ty, wb, wt); ctx.fill();
+}
+function domePath(cx, cy, rim, rx, ry, h) {
+  ctx.beginPath();
+  ctx.moveTo(cx - rx, cy + rim);
+  ctx.bezierCurveTo(cx - rx * 1.03, cy - h * 1.25, cx + rx * 1.03, cy - h * 1.25, cx + rx, cy + rim);
+  if (ry > .4) ctx.ellipse(cx, cy + rim, rx, ry, 0, 0, Math.PI, true); else ctx.closePath();
+}
+function underside(q, fill, line, kind, count) {
+  if (q.ry <= .4) return;
+  const cx = q.tx, cy = q.ty + q.rim;
+  ctx.fillStyle = rgb(fill);
+  ctx.beginPath(); ctx.ellipse(cx, cy, q.rx, q.ry, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = line; ctx.lineWidth = kind === 'thick' ? 1.2 : .6;
+  if (kind === 'pores') {
+    ctx.fillStyle = line;
+    for (let k = 0; k < 26; k++) {
+      const a = (k * 2.39996) % Math.PI, rr = Math.sqrt((k + .5) / 26);
+      ctx.fillRect(cx + Math.cos(a) * q.rx * rr * .95 - .4, cy + Math.sin(a) * q.ry * rr * .9 - .4, .9, .9);
+    }
+    return;
+  }
+  ctx.beginPath();
+  const n = count || 16;
+  for (let k = 1; k < n; k++) {
+    const a = k / n * Math.PI;
+    ctx.moveTo(cx + Math.cos(a) * q.sw * .35, cy + Math.sin(a) * q.ry * .25);
+    ctx.lineTo(cx + Math.cos(a) * q.rx * .98, cy + Math.sin(a) * q.ry * .98);
+  }
+  ctx.stroke();
+}
+
+function drawMushroom(m) {
+  const q = mushGeom(m);
+  const fade = 1 - smooth(.55, 1, q.decay);
+  if (fade <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = fade;
+  const dk = 1 - q.decay * .35;
+  const sp = m.sp;
+  // the button pushes the litter aside
+  if (q.g < .5) {
+    ctx.fillStyle = rgba([60, 42, 27], .9 * (1 - q.g * 2));
+    ctx.beginPath(); ctx.ellipse(q.bx, G + 1, q.r * 1.3, 3 * SZ * (1 - q.g), 0, Math.PI, 0); ctx.fill();
+  }
+  // soft contact shadow
+  ctx.fillStyle = 'rgba(18,12,8,.35)';
+  ctx.beginPath(); ctx.ellipse(q.bx + 2, G + 1.5, q.sw * 1.2 + q.r * .3, 2 * SZ, 0, 0, Math.PI * 2); ctx.fill();
+
+  if (sp === 'amanita') {
+    const stemC = mixRGB([240, 233, 216], [200, 186, 160], q.decay);
+    // bulb with volva rings
+    ctx.fillStyle = rgb(stemC, .95);
+    ctx.beginPath(); ctx.ellipse(q.bx, q.by - q.sw * .45, q.sw * .95, q.sw * .7, 0, 0, Math.PI * 2); ctx.fill();
+    fillStem(q, q.sw * 1.0, q.sw * .62, stemC);
+    ctx.strokeStyle = 'rgba(170,158,136,.8)'; ctx.lineWidth = .8;
+    for (let k = 0; k < 2; k++) { ctx.beginPath(); ctx.ellipse(q.bx, q.by - q.sw * (.55 + k * .35), q.sw * (.9 - k * .2), q.sw * .25, 0, .2, Math.PI - .2); ctx.stroke(); }
+    underside(q, mixRGB([243, 238, 224], [210, 196, 170], q.decay), 'rgba(160,148,126,.75)', 'gills', 20);
+    // skirt-like ring, left by the partial veil
+    if (q.o > .4) {
+      const f = .8, sx = lerp(q.bx, q.tx, f), sy = lerp(q.by, q.ty, f), w = q.sw * .35, fl = q.sw * (.6 + .25 * q.o);
+      ctx.fillStyle = rgba(stemC, .95, 1.02);
+      ctx.beginPath(); ctx.moveTo(sx - w, sy); ctx.lineTo(sx + w, sy);
+      ctx.quadraticCurveTo(sx + fl, sy + q.sh * .05, sx + fl * .9, sy + q.sh * .1);
+      ctx.quadraticCurveTo(sx, sy + q.sh * .07, sx - fl * .9, sy + q.sh * .1);
+      ctx.quadraticCurveTo(sx - fl, sy + q.sh * .05, sx - w, sy); ctx.fill();
+    }
+    const capC = mixRGB([202, 46, 28], [214, 120, 58], q.decay * .8);
+    const h = q.r * (1.02 - .55 * q.o);
+    const cg = ctx.createLinearGradient(0, q.ty - h, 0, q.ty + q.rim);
+    cg.addColorStop(0, rgb(capC, .82 * dk)); cg.addColorStop(.6, rgb(capC, 1.02 * dk)); cg.addColorStop(1, rgb(mixRGB(capC, [236, 110, 40], .35), dk));
+    ctx.fillStyle = cg; domePath(q.tx, q.ty, q.rim, q.rx, q.ry, h); ctx.fill();
+    // warts: veil remnants
+    ctx.fillStyle = rgba([246, 240, 226], .95);
+    for (const w of m.warts) {
+      const u = w.u, top = 1 - u * u;
+      const x = q.tx + u * q.rx * .92, y = q.ty + q.rim * u * u - h * .93 * top * w.v;
+      const rr = q.r * .065 * w.s * (1.3 - q.o * .4);
+      ctx.beginPath(); ctx.ellipse(x, y, rr, rr * .75, 0, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (sp === 'chanterelle') {
+    const gold = mixRGB([232, 166, 46], [196, 140, 60], q.decay);
+    const my = q.ty - q.r * .32 * q.o + (1 - q.o) * q.r * .25;
+    const stemTop = q.ty + q.r * .35;
+    fillStem(q, q.sw * .7, q.sw * .95, mixRGB(gold, [250, 220, 150], .3), stemTop);
+    // underside: forking false gills running down the stem
+    ctx.fillStyle = rgb(gold, 1.04 * dk);
+    ctx.beginPath(); ctx.moveTo(q.tx - q.rx, my);
+    ctx.quadraticCurveTo(q.tx - q.sw * .6, my + q.r * .2, q.tx - q.sw * .45, stemTop);
+    ctx.lineTo(q.tx + q.sw * .45, stemTop);
+    ctx.quadraticCurveTo(q.tx + q.sw * .6, my + q.r * .2, q.tx + q.rx, my);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = rgba(gold, .85, .72); ctx.lineWidth = .7;
+    ctx.beginPath();
+    for (let k = -4; k <= 4; k++) {
+      const u = k / 4.6, x0 = q.tx + u * q.rx * .95, y0 = my + (1 - u * u) * q.r * .05;
+      const x1 = q.tx + u * q.sw * .4, y1 = stemTop + 2;
+      ctx.moveTo(x0, y0); ctx.quadraticCurveTo(lerp(x0, x1, .5) + u * 2, lerp(y0, y1, .45), x1, y1);
+      if (Math.abs(k) % 2 === 1) { ctx.moveTo(lerp(x0, x1, .3), lerp(y0, y1, .3)); ctx.lineTo(lerp(x0, x1, .3) + u * q.r * .25, y0 + 1); }
+    }
+    ctx.stroke();
+    // wavy funnel rim and the depressed cap face seen from slightly above
+    ctx.fillStyle = rgb(gold, .9 * dk);
+    ctx.beginPath(); ctx.ellipse(q.tx, my, q.rx, Math.max(1, q.rx * .2), 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = rgb(gold, .74 * dk);
+    ctx.beginPath(); ctx.ellipse(q.tx, my + q.rx * .03, q.rx * .62, Math.max(.6, q.rx * .1), 0, 0, Math.PI * 2); ctx.fill();
+  } else if (sp === 'porcini') {
+    const stemC = mixRGB([222, 210, 180], [180, 164, 132], q.decay);
+    fillStem(q, q.sw * 1.15, q.sw * .78, stemC);
+    // white reticulation on the upper stem
+    ctx.strokeStyle = 'rgba(250,246,234,.45)'; ctx.lineWidth = .5;
+    ctx.beginPath();
+    for (let k = 0; k < 7; k++) { const yy = lerp(q.ty, q.by, k / 14) + 2; ctx.moveTo(q.tx - q.sw * .3, yy); ctx.lineTo(q.tx + q.sw * .3, yy + 2); ctx.moveTo(q.tx + q.sw * .3, yy); ctx.lineTo(q.tx - q.sw * .3, yy + 2); }
+    ctx.stroke();
+    underside(q, mixRGB([238, 230, 200], [196, 188, 104], clamp(m.age / 50, 0, 1)), 'rgba(140,130,80,.6)', 'pores');
+    const capC = mixRGB([126, 76, 38], [96, 64, 40], q.decay);
+    const h = q.r * (.95 - .3 * q.o);
+    const cg = ctx.createLinearGradient(0, q.ty - h, 0, q.ty + q.rim);
+    cg.addColorStop(0, rgb(capC, .85 * dk)); cg.addColorStop(.75, rgb(capC, 1.05 * dk)); cg.addColorStop(1, rgb(mixRGB(capC, [214, 186, 140], .5), dk));
+    ctx.fillStyle = cg; domePath(q.tx, q.ty, q.rim, q.rx * 1.04, q.ry, h); ctx.fill();
+  } else if (sp === 'laccaria') {
+    const vio = mixRGB([128, 82, 170], [176, 150, 130], q.decay * .9);
+    fillStem(q, q.sw * 1.1, q.sw * .9, mixRGB(vio, [40, 20, 60], .12));
+    ctx.strokeStyle = 'rgba(230,220,240,.25)'; ctx.lineWidth = .4;
+    ctx.beginPath(); ctx.moveTo(q.bx, q.by - 2); ctx.lineTo(q.tx, q.ty + 2); ctx.stroke();
+    underside(q, mixRGB(vio, [190, 150, 220], .35), rgba(mixRGB(vio, [60, 30, 90], .5), .85), 'thick', 9);
+    const h = q.r * (.85 - .5 * q.o);
+    ctx.fillStyle = rgb(vio, 1.05 * dk); domePath(q.tx, q.ty, q.rim, q.rx, q.ry, h); ctx.fill();
+    ctx.fillStyle = rgb(vio, .8 * dk);
+    ctx.beginPath(); ctx.ellipse(q.tx, q.ty - h * .78, q.rx * .25, h * .12, 0, 0, Math.PI * 2); ctx.fill();
+  } else if (sp === 'suillus') {
+    const stemC = mixRGB([228, 206, 140], [180, 160, 110], q.decay);
+    fillStem(q, q.sw * .95, q.sw * .8, stemC);
+    // granular dots near the top and a dark membranous ring
+    if (q.o > .35) {
+      const f = .72, sx = lerp(q.bx, q.tx, f), sy = lerp(q.by, q.ty, f);
+      ctx.fillStyle = 'rgba(92,70,58,.92)';
+      ctx.beginPath(); ctx.ellipse(sx, sy, q.sw * .62, q.sw * .22, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    underside(q, mixRGB([222, 186, 72], [168, 140, 70], q.decay), 'rgba(140,110,40,.7)', 'pores');
+    const capC = mixRGB([118, 78, 42], [90, 66, 44], q.decay);
+    const h = q.r * (.95 - .45 * q.o);
+    ctx.fillStyle = rgb(capC, dk); domePath(q.tx, q.ty, q.rim, q.rx, q.ry, h); ctx.fill();
+    // slimy sheen
+    ctx.fillStyle = 'rgba(255,240,210,.22)';
+    ctx.beginPath(); ctx.ellipse(q.tx - q.rx * .3, q.ty - h * .7, q.rx * .35, h * .14, -.3, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawCords() {
+  // each fruiting body is fed by a cord running down to its mycelium
+  ctx.lineCap = 'round';
+  for (const m of mushrooms) {
+    const n = m.node; if (!n || !nodes.has(n.id)) continue;
+    const q = mushGeom(m), a = 1 - q.decay;
+    const col = colById(n.col), c = col ? FUNGI[col.sp].tintC : [236, 229, 211];
+    ctx.strokeStyle = rgba(c, .4 * a); ctx.lineWidth = 1.1 * SZ;
+    ctx.beginPath(); ctx.moveTo(m.x, G + 1);
+    ctx.quadraticCurveTo(m.x, (G + n.y) / 2, n.x, n.y); ctx.stroke();
+  }
+}
+
+function drawSoak() {
+  if (soak < .02) return;
+  const front = G + LIT + soak * (H - G) * .8;
+  const g = ctx.createLinearGradient(0, G, 0, front);
+  g.addColorStop(0, `rgba(8,14,24,${.34 * soak})`);
+  g.addColorStop(.8, `rgba(10,18,30,${.2 * soak})`);
+  g.addColorStop(1, 'rgba(10,18,30,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, G, W, front - G);
+}
+
+function drawPerc() {
+  if (!perc.length) return;
+  ctx.fillStyle = 'rgba(170,205,240,.5)';
+  for (const p of perc) { ctx.globalAlpha = 1 - p.t / p.life; ctx.fillRect(p.x - .6, p.y, 1.2, 2.2); }
+  ctx.globalAlpha = 1;
+}
+
+function drawLitter() {
+  for (const p of litter) {
+    const c = mixRGB(p.c, LITTER_DARK, clamp(p.age / 150, 0, .85));
+    ctx.fillStyle = rgb(c);
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, p.rx, p.ry, p.rot, 0, Math.PI * 2); ctx.fill();
+  }
+  if (snow > .02) {
+    const th = 1.5 + snow * 7 * SZ;
+    ctx.fillStyle = `rgba(232,236,240,${.35 + snow * .6})`;
+    ctx.beginPath(); ctx.moveTo(0, G + 1.5);
+    for (let x = 0; x <= W + 8; x += 8) ctx.lineTo(x, G - th * (.75 + .25 * Math.sin(x * .05) * Math.sin(x * .013)));
+    ctx.lineTo(W, G + 1.5); ctx.closePath(); ctx.fill();
+  }
+}
+
+function drawLeaves() {
+  for (const l of leaves) {
+    ctx.save(); ctx.translate(l.x, l.y); ctx.rotate(l.rot);
+    ctx.fillStyle = rgb(l.c);
+    ctx.beginPath(); ctx.ellipse(0, 0, l.s, l.s * .45 * Math.abs(Math.cos(l.rot * 1.3)) + .3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawSpores() {
+  for (const s of spores) {
+    const k = s.t / s.life;
+    ctx.globalAlpha = (1 - k) * Math.min(1, s.t * 3) * .85;
+    ctx.fillStyle = s.c;
+    ctx.fillRect(s.x - .7, s.y - .7, 1.4, 1.4);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawPrecip() {
+  if (drops.length) {
+    ctx.strokeStyle = 'rgba(190,206,222,.38)'; ctx.lineWidth = .9;
+    ctx.beginPath();
+    for (const d of drops) {
+      if (d.snow) continue;
+      ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - d.vx * .022, d.y - d.vy * .022);
+    }
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(240,244,248,.85)';
+    for (const d of drops) if (d.snow) { ctx.beginPath(); ctx.arc(d.x, d.y, d.s, 0, Math.PI * 2); ctx.fill(); }
+  }
+  if (splashes.length) {
+    ctx.strokeStyle = 'rgba(200,215,230,.5)'; ctx.lineWidth = .8;
+    for (const s of splashes) {
+      const k = s.t / .28, r = 1 + k * 4;
+      ctx.globalAlpha = 1 - k;
+      ctx.beginPath(); ctx.arc(s.x, s.y, r, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+extraRemap.push((sx, fy) => {
+  for (const p of litter) { p.x *= sx; p.y = G - rand(-.5, 3); }
+  for (const m of mushrooms) m.x *= sx;
+  drops.length = 0; splashes.length = 0; perc.length = 0; leaves.length = 0; spores.length = 0;
+});
+
+const rainBtn = document.getElementById('rainBtn');
+rainBtn.addEventListener('click', () => { lastInput = T; startPrecip(rand(16, 24)); if (onGesture) onGesture(); });
+
+// ---------- tooltip & input ----------
+const tipEl = document.getElementById('tip');
+let tipUntil = 0;
+function showTip(html, x, y, hold) {
+  tipEl.innerHTML = html; tipEl.hidden = false;
+  const r = tipEl.getBoundingClientRect();
+  let lx = x + 14, ly = y - r.height - 12;
+  if (lx + r.width > W - 8) lx = x - r.width - 14;
+  if (ly < 8) ly = y + 18;
+  tipEl.style.left = clamp(lx, 8, W - r.width - 8) + 'px'; tipEl.style.top = clamp(ly, 8, H - r.height - 8) + 'px';
+  tipUntil = hold ? performance.now() + hold : 0;
+}
+function hideTip() { if (tipUntil && performance.now() < tipUntil) return; tipEl.hidden = true; }
+function treeAt(x, y) {
+  for (let i = trees.length - 1; i >= 0; i--) {
+    const t = trees[i]; const h = treeH(t);
+    if (y < G + 2 && y > G - h && Math.abs(x - t.x) < Math.max(10, h * (t.sp === 'birch' ? .18 : .3))) return t;
+  }
+  return null;
+}
+function treeHTML(t) {
+  const S = TREE_SP[t.sp];
+  const partners = Object.values(FUNGI).filter(f => f.hosts.includes(t.sp)).map(f => f.common.toLowerCase());
+  const linked = contactList.some(n => n.contact === t.id);
+  return `<i>${S.latin}</i><b>${S.name}</b>${S.note} Partners here: ${partners.join(', ')}.${linked ? '' : ' Not yet connected.'}`;
+}
+let hoverFn = (x, y) => { const m = mushAt(x, y); if (m) return mushHTML(m); const t = treeAt(x, y); return t ? treeHTML(t) : null; };
+
+const ptr = { down: false, x0: 0, y0: 0, x: 0, y: 0, cutting: false };
+cv.addEventListener('pointerdown', e => {
+  if (WALL()) return;
+  ptr.down = true; ptr.cutting = false; ptr.x0 = ptr.x = e.clientX; ptr.y0 = ptr.y = e.clientY;
+  try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+  lastInput = T;
+  if (onGesture) onGesture();
+});
+cv.addEventListener('pointermove', e => {
+  if (WALL()) return;
+  const x = e.clientX, y = e.clientY;
+  if (ptr.down) {
+    if (!ptr.cutting && Math.hypot(x - ptr.x0, y - ptr.y0) > 9) { ptr.cutting = true; cutTrail.length = 0; cutTrail.push({ x: ptr.x0, y: ptr.y0, t: T }); cut(ptr.x0, ptr.y0, x, y); }
+    else if (ptr.cutting) cut(ptr.x, ptr.y, x, y);
+    ptr.x = x; ptr.y = y; lastInput = T;
+    tipEl.hidden = true;
+    return;
+  }
+  if (e.pointerType === 'mouse') {
+    const html = hoverFn(x, y);
+    if (html) { showTip(html, x, y, 0); cv.style.cursor = 'help'; } else { hideTip(); cv.style.cursor = 'crosshair'; }
+  }
+});
+const endPtr = e => {
+  if (!ptr.down) return;
+  ptr.down = false;
+  if (!ptr.cutting) tap(e.clientX, e.clientY, e.pointerType);
+  ptr.cutting = false;
+};
+cv.addEventListener('pointerup', endPtr);
+cv.addEventListener('pointercancel', () => { ptr.down = false; ptr.cutting = false; });
+cv.addEventListener('pointerleave', () => { if (!ptr.down) hideTip(); });
+let onGesture = null;
+
+let tapExtra = (x, y) => { const m = mushAt(x, y); if (m) { showTip(mushHTML(m), x, y, 4000); return true; } return false; };
+function tap(x, y, type) {
+  if (tapExtra && tapExtra(x, y, type)) return;
+  if (type !== 'mouse') { const t = treeAt(x, y); if (t && y < G - 10) { showTip(treeHTML(t), x, y, 3500); return; } }
+  plantTree(x, selSp, false);
+}
+
+document.querySelectorAll('[data-sp]').forEach(b => b.addEventListener('click', e => {
+  selSp = b.dataset.sp;
+  document.querySelectorAll('[data-sp]').forEach(o => o.setAttribute('aria-pressed', String(o === b)));
+  lastInput = T;
+  if (e.detail === 0) plantTree(freeX(), selSp, false); // keyboard: plant right away
+}));
+if (matchMedia('(pointer: coarse)').matches) document.getElementById('hint').textContent = 'Tap to plant a tree. Drag through the soil to cut a thread.';
+
+// ---------- status ----------
+const statusEl = document.getElementById('status');
+let statusText = '';
+function seasonName() {
+  const i = Math.floor(season) % 4, f = season - Math.floor(season);
+  const n = ['spring', 'summer', 'autumn', 'winter'][i];
+  const p = f < .33 ? 'Early ' : f > .67 ? 'Late ' : '';
+  return p ? p + n : n[0].toUpperCase() + n.slice(1);
+}
+let weatherText = () => precip.I > .35 ? (precip.kind === 'snow' ? ', snowing' : ', raining') : moist > .5 ? ', wet soil' : snow > .3 ? ', snow on the ground' : '';
+function updateStatus() {
+  const living = trees.filter(t => t.alive);
+  const linked = new Set();
+  for (const i of compInfo) if (i.contacts.size > 1) for (const id of i.contacts) linked.add(id);
+  let k = 0; for (const t of living) if (linked.has(t.id)) k++;
+  const net = !living.length ? 'No trees yet.' : k === 0 ? 'No trees share a network yet.' : `${k} of ${living.length} trees share a network.`;
+  const s = `${seasonName()}${weatherText()}. ${net}`;
+  if (s !== statusText) { statusText = s; statusEl.textContent = s; }
+  const wantLbl = Math.floor(season) % 4 === 3 ? 'Bring snow' : 'Bring rain';
+  if (rainBtn.textContent !== wantLbl) rainBtn.textContent = wantLbl;
+}
+
+// ---------- sound: generative, only after a gesture ----------
+const sndBtn = document.getElementById('sndBtn');
+let AC = null, master = null, echo = null, rainG = null, rainF = null, noiseBuf = null, soundOn = false, lastBlip = 0;
+const PENTA = [293.66, 329.63, 369.99, 440, 493.88, 587.33, 659.25, 739.99];
+function initAudio() {
+  const A = window.AudioContext || window.webkitAudioContext; if (!A) return false;
+  try { AC = new A(); } catch (_) { return false; }
+  master = AC.createGain(); master.gain.value = 0;
+  const comp = AC.createDynamicsCompressor(); master.connect(comp); comp.connect(AC.destination);
+  // a damp, woody echo
+  const dl = AC.createDelay(1.5); dl.delayTime.value = .43;
+  const fb = AC.createGain(); fb.gain.value = .36;
+  const dlf = AC.createBiquadFilter(); dlf.type = 'lowpass'; dlf.frequency.value = 1700;
+  dl.connect(dlf); dlf.connect(fb); fb.connect(dl); dlf.connect(master);
+  echo = AC.createGain(); echo.gain.value = .55; echo.connect(dl);
+  // soil hum: a low open fifth, breathing through a slow filter
+  const df = AC.createBiquadFilter(); df.type = 'lowpass'; df.frequency.value = 240; df.Q.value = .8;
+  const dg = AC.createGain(); dg.gain.value = .07; df.connect(dg); dg.connect(master);
+  for (const f of [73.42, 110, 146.83, 220.5]) {
+    const o = AC.createOscillator(); o.type = f > 150 ? 'sine' : 'triangle'; o.frequency.value = f; o.detune.value = rand(-7, 7);
+    const g = AC.createGain(); g.gain.value = f > 150 ? .18 : .35; o.connect(g); g.connect(df); o.start();
+  }
+  const lfo = AC.createOscillator(); lfo.frequency.value = .045; const lg = AC.createGain(); lg.gain.value = 110;
+  lfo.connect(lg); lg.connect(df.frequency); lfo.start();
+  // rain: looped brown-ish noise
+  noiseBuf = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate);
+  const d = noiseBuf.getChannelData(0); let last = 0;
+  for (let i = 0; i < d.length; i++) { const w = Math.random() * 2 - 1; last = (last + .08 * w) / 1.08; d[i] = w * .5 + last * 2; }
+  const src = AC.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+  rainF = AC.createBiquadFilter(); rainF.type = 'bandpass'; rainF.frequency.value = 1300; rainF.Q.value = .5;
+  rainG = AC.createGain(); rainG.gain.value = 0;
+  src.connect(rainF); rainF.connect(rainG); rainG.connect(master); src.start();
+  return true;
+}
+function tone(freq, type, gain, dur, wet) {
+  if (!soundOn || !AC) return;
+  const t = AC.currentTime;
+  const o = AC.createOscillator(); o.type = type; o.frequency.value = freq;
+  const g = AC.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + .012); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  o.connect(g); g.connect(master); if (wet) g.connect(echo);
+  o.start(t); o.stop(t + dur + .05);
+}
+function setSound(on) {
+  if (on && !AC && !initAudio()) return;
+  soundOn = on && !WALL();
+  if (AC) {
+    if (soundOn && AC.state === 'suspended') AC.resume();
+    master.gain.setTargetAtTime(soundOn ? .85 : 0, AC.currentTime, .25);
+  }
+  sndBtn.setAttribute('aria-pressed', String(soundOn));
+  sndBtn.textContent = soundOn ? 'Sound on' : 'Sound off';
+}
+sndBtn.addEventListener('click', () => { lastInput = T; setSound(!soundOn); });
+
+onArrive = kind => {
+  if (!soundOn || !AC) return;
+  const now = AC.currentTime; if (now - lastBlip < .2) return; lastBlip = now;
+  if (kind === 'sugar') tone(pick(PENTA.slice(3)), 'sine', .045, 1.4, true);
+  else if (kind === 'nut') tone(pick(PENTA.slice(0, 5)) / 2, 'triangle', .04, 1.2, true);
+  else { const f = pick(PENTA); tone(f, 'sine', .04, 1.6, true); setTimeout(() => tone(f * 1.5, 'sine', .03, 1.6, true), 140); }
+};
+onCut = n => {
+  if (!soundOn || !AC || !noiseBuf) return;
+  const t = AC.currentTime;
+  const s = AC.createBufferSource(); s.buffer = noiseBuf;
+  const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3200;
+  const g = AC.createGain(); g.gain.setValueAtTime(Math.min(.12, .04 + n * .01), t); g.gain.exponentialRampToValueAtTime(.0001, t + .09);
+  s.connect(hp); hp.connect(g); g.connect(master); s.start(t, Math.random()); s.stop(t + .1);
+};
+onOpen = () => {
+  if (!soundOn || !AC) return;
+  const t = AC.currentTime;
+  const o = AC.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(62, t + .35);
+  const g = AC.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.09, t + .02); g.gain.exponentialRampToValueAtTime(.0001, t + .5);
+  o.connect(g); g.connect(master); g.connect(echo); o.start(t); o.stop(t + .55);
+};
+function updateSound() {
+  if (!AC || !rainG) return;
+  const snowy = precip.kind === 'snow';
+  rainG.gain.setTargetAtTime(soundOn ? precip.I * (snowy ? .03 : .16) : 0, AC.currentTime, .5);
+  rainF.frequency.setTargetAtTime(snowy ? 600 : 1300, AC.currentTime, .5);
+}
+
+// remember the chosen tree species for this viewer
+try {
+  const saved = localStorage.getItem('mycelium.species');
+  if (saved && TREE_SP[saved]) {
+    selSp = saved;
+    document.querySelectorAll('[data-sp]').forEach(o => o.setAttribute('aria-pressed', String(o.dataset.sp === saved)));
+  }
+} catch (_) {}
+document.querySelectorAll('[data-sp]').forEach(b => b.addEventListener('click', () => { try { localStorage.setItem('mycelium.species', b.dataset.sp); } catch (_) {} }));
+
+// ---------- loop ----------
+let last = performance.now(), statusAcc = 0, lastDraw = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const wall = WALL();
+  if (wall && now - lastDraw < 1000 / 30 - 3) return;
+  lastDraw = now;
+  let dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (RM) dt *= .5;
+  sim(dt);
+  draw(dt);
+  statusAcc += dt; if (statusAcc > .5) { statusAcc = 0; updateStatus(); updateSound(); }
+  if (tipUntil && now > tipUntil) { tipUntil = 0; tipEl.hidden = true; }
+}
+
+function applyMode() { document.documentElement.classList.toggle('wall', WALL()); }
+window.addEventListener('hashchange', () => { applyMode(); if (WALL()) setSound(false); resize(); });
+window.addEventListener('resize', resize);
+
+// ---------- prewarm: the first frame is already a living network ----------
+function prewarm() {
+  season = 2.06; moist = .55; soak = .5;
+  const wide = W > 900;
+  const spots = wide ? [[.17, 'birch'], [.39, 'pine'], [.62, 'oak'], [.84, 'beech']] : [[.22, 'birch'], [.55, 'pine'], [.84, 'oak']];
+  for (const [f, sp] of spots) { const t = plantTree(W * f + rand(-15, 15), sp, true); t.born = -200; }
+  seedColony('amanita', W * (wide ? .27 : .36), lerp(G + LIT, HUM, .5));
+  seedColony('chanterelle', W * (wide ? .73 : .74), lerp(G + LIT, HUM, .6));
+  seedColony('porcini', W * .5, lerp(HUM, H, .2));
+  seedColony('laccaria', W * (wide ? .9 : .92), lerp(G + LIT, HUM, .8));
+  if (wide) seedColony('suillus', W * .4, lerp(HUM, H, .35));
+  for (let i = 0; i < 720; i++) {
+    T += 1 / 12;
+    growStep();
+    if (i % 10 === 0) { maintain(); refreshRootTips(); }
+  }
+  maintain();
+  seedLitter();
+  for (const a of [34, 21, 9]) spawnMushroom(a);
+  for (let i = 0; i < 30; i++) spawnPulse();
+  for (const p of pulses) p.pos = Math.random() * (p.path.length - 1);
+}
+
+applyMode();
+resize();
+prewarm();
+updateStatus();
+requestAnimationFrame(t => { last = t; frame(t); });
+})();
+</script>
