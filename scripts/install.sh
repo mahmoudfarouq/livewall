@@ -2,6 +2,7 @@
 # Installs livewall for the current user (no sudo):
 #   the binary to $PREFIX/bin, presets to $PREFIX/share/livewall/presets.
 # Usage: scripts/install.sh [path/to/livewall]   (PREFIX defaults to ~/.local)
+# Piped from curl, with no release or build next to it, it downloads the latest release first.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -13,9 +14,13 @@ bin=${1:-}
 for candidate in "$bin" "$root/livewall" "$root/.build/release/livewall"; do
   if [ -n "$candidate" ] && [ -f "$candidate" ] && [ -x "$candidate" ]; then bin=$candidate; break; fi
 done
-if [ -z "$bin" ] || [ ! -x "$bin" ]; then
-  echo "livewall binary not found; run 'swift build -c release' first" >&2
-  exit 1
+if [ -z "$bin" ] || [ ! -x "$bin" ] || [ ! -d "$root/presets" ]; then
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' EXIT
+  echo "downloading the latest livewall release"
+  curl -fsSL https://github.com/mahmoudfarouq/livewall/releases/latest/download/livewall-macos-universal.tar.gz | tar -xz -C "$tmp"
+  root="$tmp/livewall"
+  bin="$root/livewall"
 fi
 
 presets="$prefix/share/livewall/presets"
