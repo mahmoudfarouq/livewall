@@ -61,6 +61,10 @@ final class Wallpaper: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
         onSignal(SIGTERM) { [weak self] in self?.shutdown() }
         onSignal(SIGINT) { [weak self] in self?.shutdown() }
+        onSignal(SIGUSR1) { [weak self] in
+            log("reloading")
+            self?.windows.values.forEach { self?.load($0.web) }
+        }
 
         opts.pid = getpid()
         opts.started = Date()
