@@ -73,8 +73,8 @@ enum CLI {
       --wallpaper-hash                  append #wallpaper to local files (default)
       --no-wallpaper-hash               load local files without it
 
-    Presets are <slug>.html files, searched in $LIVEWALL_PRESETS, ~/.local/share/livewall/presets,
-    then presets/ in the repo when run from its .build folder.
+    Presets are <slug>.html files, searched in $LIVEWALL_PRESETS, <prefix>/share/livewall/presets next to
+    the installed binary, ~/.local/share/livewall/presets, then presets/ in the repo when run from .build.
     Files live in ~/Library/Application Support/livewall/ (state.json, livewall.pid, livewall.log).
     """
     /// Turns a path or URL into the URL the daemon loads.

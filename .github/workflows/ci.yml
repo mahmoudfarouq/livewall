@@ -44,6 +44,8 @@ jobs:
         run: |
           PREFIX="$RUNNER_TEMP/prefix" sh scripts/install.sh "$BIN"
           "$RUNNER_TEMP/prefix/bin/livewall" --version
+          # an installed binary finds the presets under its own prefix
+          test "$("$RUNNER_TEMP/prefix/bin/livewall" presets | wc -l)" -eq "$(ls presets/*.html | wc -l)"
           test "$(ls "$RUNNER_TEMP/prefix/share/livewall/presets" | wc -l)" -eq "$(ls presets/*.html | wc -l)"
 
   presets:

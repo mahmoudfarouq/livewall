@@ -2,12 +2,15 @@ import Foundation
 
 /// Bundled pages, found as <slug>.html in the first preset folder that has them.
 enum Presets {
-    /// Search order: $LIVEWALL_PRESETS, ~/.local/share/livewall/presets, then presets/
-    /// in the repo when running from its .build folder.
+    /// Search order: $LIVEWALL_PRESETS, <prefix>/share/livewall/presets next to the installed binary,
+    /// ~/.local/share/livewall/presets, then presets/ in the repo when running from its .build folder.
     static var dirs: [URL] {
         var dirs: [URL] = []
         if let env = ProcessInfo.processInfo.environment["LIVEWALL_PRESETS"], !env.isEmpty {
             dirs.append(URL(fileURLWithPath: (env as NSString).expandingTildeInPath, isDirectory: true))
+        }
+        if let bin = Bundle.main.executableURL?.resolvingSymlinksInPath().deletingLastPathComponent() {
+            dirs.append(bin.deletingLastPathComponent().appendingPathComponent("share/livewall/presets", isDirectory: true))
         }
         dirs.append(FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".local/share/livewall/presets", isDirectory: true))

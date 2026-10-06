@@ -107,8 +107,9 @@ Each preset is one self-contained HTML file in `presets/`, named `<slug>.html`
 presets in this order, and the first match wins:
 
 1. `$LIVEWALL_PRESETS`
-2. `~/.local/share/livewall/presets`
-3. `presets/` in the repo, when running from its `.build` folder
+2. `<prefix>/share/livewall/presets`, next to the installed binary (`<prefix>/bin/livewall`)
+3. `~/.local/share/livewall/presets`
+4. `presets/` in the repo, when running from its `.build` folder
 
 ## How it works
 
